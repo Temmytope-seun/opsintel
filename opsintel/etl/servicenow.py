@@ -180,7 +180,7 @@ def d(row: dict, f: str) -> str:
 # --------------------------------------------------------------------------- extraction
 
 INCIDENT_FIELDS = ["sys_id", "number", "opened_at", "resolved_at", "closed_at", "state", "priority", "impact", "urgency",
-                   "business_service", "company", "cmdb_ci", "category", "assignment_group", "close_code",
+                   "business_service", "company", "cmdb_ci", "category", "subcategory", "problem_id", "assignment_group", "close_code",
                    "short_description", "reopen_count", "sys_updated_on"]
 REQUEST_FIELDS = ["sys_id", "number", "opened_at", "closed_at", "due_date", "estimated_delivery", "state", "cat_item",
                   "assignment_group", "company", "sys_updated_on"]
@@ -312,6 +312,9 @@ def land(raw: dict, out_dir: Path, instance: str) -> dict:
                 gaps["incidents_without_company"] += 1
                 comp = INTERNAL_CUSTOMER[0]
             close = d(r, "close_code")
+            # Root cause: the linked problem says *why*; subcategory is the next-best signal;
+            # the close code (how the ticket was closed) is the last resort.
+            cause = d(r, "problem_id") or (f"{d(r, 'category')} / {d(r, 'subcategory')}" if d(r, "subcategory") else "")
             gaps["incidents_without_close_code"] += 0 if close or not v(r, "resolved_at") else 1
             resolved = v(r, "resolved_at") or v(r, "closed_at")
             if _ts(v(r, "opened_at")):
@@ -320,7 +323,7 @@ def land(raw: dict, out_dir: Path, instance: str) -> dict:
                         "service": name, "customer_id": comp, "asset_id": v(r, "cmdb_ci") if v(r, "cmdb_ci") in asset_ids else "",
                         "impact": v(r, "impact") or "3", "urgency": v(r, "urgency") or "3", "priority": PRIORITY.get(v(r, "priority"), ""),
                         "category": d(r, "category") or "Uncategorised", "assignment_group": d(r, "assignment_group") or "Unassigned",
-                        "root_cause": close or ("Not recorded" if resolved else ""), "short_description": d(r, "short_description"),
+                        "root_cause": cause or close or ("Not recorded" if resolved else ""), "short_description": d(r, "short_description"),
                         "caused_outage": "False", "outage_minutes": "0", "reopened": str(int(v(r, "reopen_count") or 0) > 0),
                         "status": d(r, "state") or "Unknown", "sys_updated_on": v(r, "sys_updated_on")})
 

@@ -20,4 +20,4 @@ sn-test:          ## check ServiceNow credentials (.env) and read access
 sn-sync:          ## extract the ServiceNow instance into data_servicenow/ and run the ETL
 	$(PY) -m opsintel.cli servicenow-sync
 sn-ui:            ## dashboard on the ServiceNow-sourced data
-	OPSINTEL_DATA_DIR=data_servicenow $(PY) -m streamlit run app/streamlit_app.py
+	OPSINTEL_DATA_DIR=data_servicenow $(PY) -m streamlit run app/streamlit_app.py --server.port 8502

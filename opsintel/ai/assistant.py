@@ -237,6 +237,8 @@ class RulesEngine:
 
     def delivery(self, q, ctx):
         e1 = call_tool(ctx, "get_delivery_delay_risk", {"limit": 10})
+        if e1.is_error:
+            return self._abstain(ctx, self._err(e1)), True
         r = e1.result
         lines = [f"{r['open_requests']} service requests are open at the snapshot; the ones most likely to delay delivery [{e1.evidence_id}]:", ""]
         for d in r["data"][:6]:
@@ -256,6 +258,8 @@ class RulesEngine:
 
     def downtime(self, q, ctx):
         e1 = call_tool(ctx, "get_downtime_causes", {"months": 6})
+        if e1.is_error:
+            return self._abstain(ctx, self._err(e1)), True
         r = e1.result
         lines = [f"Customer-facing downtime {r['window']}: {r['total_outage_minutes']:,} minutes in total [{e1.evidence_id}].", ""]
         for d in r["data"][:5]:
@@ -301,6 +305,8 @@ class RulesEngine:
 
     def backlog(self, q, ctx):
         e1 = call_tool(ctx, "get_open_backlog", {})
+        if e1.is_error:
+            return self._abstain(ctx, self._err(e1)), True
         lines = [e1.result["summary"] + f" [{e1.evidence_id}]", ""]
         for d in e1.result["data"][:6]:
             lines.append(f"- {d['service_name']}: {d['open_incidents']} open, {d['open_past_target']} past target, avg age {d['avg_age_hours']}h")

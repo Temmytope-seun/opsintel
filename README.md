@@ -100,6 +100,8 @@ make sn-sync
 make sn-ui
 ```
 
+**Realistic demo data for a developer instance.** A new developer instance has only a few dozen old demo incidents. `tools/servicenow/seed_incidents.js` adds a year of realistic history to it. Run it in *System Definition → Scripts – Background* as admin. It creates about 1,400 incidents on the instance's own services, CIs, groups and users, with business-hours arrival, priority from impact × urgency, and resolution times around the P1–P4 targets. It also plants three signals: VPN failures from July linked to a problem record, a mail-gateway TLS spike in September, and a Retail POS peak around Black Friday. `link_problems.js` creates and links the problem records where data policies blocked them during seeding. Every seeded record is tagged `correlation_id = opsintel_seed`. `remove_seed.js` lists them by default and deletes them only when you set `DRY_RUN = false`.
+
 ServiceNow data goes to `data_servicenow/` and never mixes with the synthetic set. A standard instance has no finance ledger, monitoring feed or outage minutes, so those features are empty on this data. Mapping gaps are recorded in `data_servicenow/source_manifest.json` rather than filled with invented values. The connector is tested against a fake Table API in `tests/test_servicenow.py`.
 
 ## Results (from the latest harness run, not hand-written)

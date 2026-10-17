@@ -109,7 +109,7 @@ def sla_breach_rate(period: str = "last_quarter", group_by: str | None = "catego
         out["prev_breached"] = pv.breached.reindex(out.index)
         out["change_pp"] = (out.breach_rate_pct - out.prev_breach_rate_pct).round(1)
     out = out.sort_values("breach_rate_pct", ascending=False).reset_index().rename(columns={"grp": group_by or "scope"})
-    top = out.iloc[0]
+    top = _first(out, f"SLA breach rate in {value}")
     summary = (f"In {value}, highest SLA breach rate: {top.iloc[0]} at {top.breach_rate_pct}% "
                f"({int(top.breached)} of {int(top.outcome_known)} incidents)")
     if compare and pd.notna(top.get("prev_breach_rate_pct")):
@@ -170,9 +170,11 @@ def downtime_causes(months: int = 6, limit: int = 8, con=None) -> dict:
     df = db.query_df(sql, {"start": start, "lim": limit}, con)
     total = db.query_df("SELECT SUM(outage_minutes) AS m FROM incidents WHERE caused_outage=1 AND opened_month >= :start",
                         {"start": start}, con).m.iloc[0]
+    if not total or len(df) == 0:
+        raise ValueError("No customer-facing outages are recorded in this data set (outage minutes are not available from this source).")
     df["share_of_downtime_pct"] = (100 * df.outage_minutes / total).round(1)
     df["recurring"] = df.months_present >= max(3, months // 2)
-    top = df.iloc[0]
+    top = _first(df, "downtime")
     return {"metric": "downtime_by_root_cause", "window": f"{start} to {end}", "total_outage_minutes": int(total),
             "data": _records(df), "sql": _clean_sql(sql),
             "summary": f"{top.root_cause} caused the most downtime from {start} to {end}: {int(top.outage_minutes)} minutes "
@@ -204,7 +206,7 @@ def backlog(con=None) -> dict:
         FROM v_incidents WHERE resolved_at IS NULL
         GROUP BY service_name, business_unit ORDER BY open_past_target DESC, open_incidents DESC"""
     df = db.query_df(sql, {"snap": snap}, con)
-    top = df.iloc[0]
+    top = _first(df, "open incidents")
     return {"metric": "open_incident_backlog", "as_of": config.SNAPSHOT_DATE.isoformat(), "data": _records(df), "sql": _clean_sql(sql),
             "summary": f"{int(df.open_incidents.sum())} open incidents at snapshot; {int(df.open_past_target.sum())} already past SLA target "
                        f"(most: {top.service_name}, {int(top.open_past_target)}).",
@@ -224,6 +226,8 @@ def cost_change(month: str = "this_month", group_by: str = "service_cost_type", 
         FROM costs c JOIN services s USING (service_id) JOIN business_units b ON b.bu_id = s.bu_id
         WHERE c.month IN (:cur, :prev)"""
     df = db.query_df(sql, {"cur": value, "prev": prev}, con)
+    if df.empty:
+        raise ValueError(f"No cost data for {value}: this data set has no finance source.")
     keys = {"service_cost_type": ["service", "cost_type"], "service": ["service"], "cost_type": ["cost_type"],
             "business_unit": ["business_unit"]}[group_by]
     piv = df.pivot_table(index=keys, columns="month", values="amount_gbp", aggfunc="sum").fillna(0)
@@ -277,7 +281,7 @@ def delivery_performance(period: str = "last_quarter", con=None) -> dict:
         WHERE r.closed_at IS NOT NULL AND {expr} = :p
         GROUP BY s.name, r.request_type ORDER BY on_time_pct ASC"""
     df = db.query_df(sql, {"p": value}, con)
-    worst = df.iloc[0]
+    worst = _first(df, f"closed service requests in {value}")
     return {"metric": "on_time_delivery_rate", "period": value, "data": _records(df), "sql": _clean_sql(sql),
             "summary": f"Lowest on-time delivery in {value}: {worst.request_type} ({worst.service}) at {worst.on_time_pct}% of {int(worst.closed)}.",
             "chart": {"type": "bar", "x": "request_type", "y": ["on_time_pct"], "title": f"On-time delivery % by request type - {value}"}}
@@ -310,7 +314,7 @@ def improvement_priorities(period: str = "last_quarter", con=None) -> dict:
     df["impact_score"] = (50 * df.excess_hours / df.excess_hours.sum() + 50 * df.outage_minutes / max(1, df.outage_minutes.sum())).round(1)
     df = df.sort_values("impact_score", ascending=False).head(10).reset_index(drop=True)
     df.insert(0, "rank", range(1, len(df) + 1))
-    top = df.iloc[0]
+    top = _first(df, f"improvement priorities in {value}")
     return {"metric": "improvement_priorities", "period": value,
             "method": "impact_score = 50 x share of hours beyond SLA/due date + 50 x share of downtime minutes",
             "data": _records(df), "sql": _clean_sql(q_inc + ";\n" + q_req),
@@ -344,6 +348,13 @@ def headline_kpis(con=None) -> dict:
         out[k], out[f"{k}_prev"] = val(df, snap_m, k), val(df, prev_m, k)
     out["cost_gbp"], out["cost_gbp_prev"] = val(cost, snap_m), val(cost, prev_m)
     return out
+
+
+def _first(df: pd.DataFrame, what: str):
+    """First row, or a clear 'no data' error the tool layer turns into an honest abstention."""
+    if df is None or len(df) == 0:
+        raise ValueError(f"No data for {what} in this data set.")
+    return df.iloc[0]
 
 
 def _records(df: pd.DataFrame) -> list[dict]:
