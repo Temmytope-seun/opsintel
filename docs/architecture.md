@@ -1,6 +1,6 @@
 # Architecture
 
-> Editable versions of these diagrams (and six more) are in [diagrams/opsintel_architecture.drawio](diagrams/opsintel_architecture.drawio).
+> Editable versions of these diagrams (and seven more, including the ServiceNow integration) are in [diagrams/opsintel_architecture.drawio](diagrams/opsintel_architecture.drawio).
 
 OpsIntel is a layered platform, not a chat window on a database. Each layer can be tested on its own, and the language model sits on top of a deterministic analytics layer it cannot bypass.
 
@@ -11,6 +11,7 @@ flowchart TB
     subgraph S["1 · Enterprise sources"]
         CMDB[(CMDB<br/>relational DB)]
         ITSM[ITSM exports<br/>incidents · requests CSV]
+        SN[ServiceNow instance<br/>Table API · OAuth]
         FIN[Finance ledger<br/>CSV export]
         MON[Monitoring<br/>REST API, paginated]
         DOCS[Runbooks · policies<br/>problem records]
@@ -82,11 +83,15 @@ The model never touches the database directly. It can only call tools; each call
 
 ## 3. Source-system inventory (illustrative current state)
 
-This is the kind of inventory to confirm with the partner company during discovery. **None of it describes a real company's systems.**
+This is the kind of inventory to confirm with the partner company during discovery. **None of it describes a real company's systems.** Two source modes are implemented:
+
+- **Synthetic (default):** the generator writes the CSV, database and REST sources below, with injected defects, so data quality can be measured against known truth.
+- **Live ServiceNow:** `opsintel/etl/servicenow.py` reads a real instance (tested against a Personal Developer Instance) and lands it in the *same* raw format, so the same pipeline runs on it. See §4a.
 
 | Source | Typical system | Interface used here | Defects handled |
 |---|---|---|---|
 | CMDB (services, assets, customers, SLA definitions) | ServiceNow CMDB / Halo / Autotask | Read-only SQL extract | Primary-key duplicates |
+| Incident and request records (live) | ServiceNow | Table API, OAuth 2.0 client credentials, paged GET | Missing business service / company, missing due dates, hidden fields (field ACLs), demo records spanning years |
 | Incident and request records | ServiceNow / Halo ITSM | Scheduled CSV export | Duplicates, stale versions, mixed date formats, free-text service names and typos, missing priority, test tickets, impossible timestamps, orphan customers |
 | Finance ledger | Xero / Sage / Dynamics | Monthly CSV export | Currency strings, inconsistent month format, re-export duplicates |
 | Monitoring | PRTG / LogicMonitor / Zabbix | Paginated REST API | At-least-once duplicate events, inconsistent severity case, asset-only references |
@@ -101,6 +106,48 @@ Every ETL run writes:
 - `dq_results`: the same quality metrics measured **before** and **after** processing, per source
 - `etl_rejects`: every quarantined record, with its reason and original payload, so nothing is silently dropped
 
+## 4a. ServiceNow integration
+
+```mermaid
+sequenceDiagram
+    participant C as OpsIntel connector
+    participant T as ServiceNow /oauth_token.do
+    participant A as ServiceNow Table API
+    participant L as Landing (data_servicenow/raw)
+    participant P as Same ETL pipeline
+    C->>T: POST client_credentials (client id + secret from .env)
+    T-->>C: access token (runs as read-only integration user)
+    loop each table, 1,000 rows per page
+        C->>A: GET /api/now/table/{incident, sc_req_item, cmdb_ci_service, core_company, business_unit, cmdb_ci}
+        A-->>C: rows (value + display value)
+    end
+    C->>L: cmdb.sqlite + itsm_incidents.csv + itsm_requests.csv + source_manifest.json
+    L->>P: validate · entity match · quarantine · lineage · load
+```
+
+**Design decisions**
+
+| Decision | Why |
+|---|---|
+| **Land, don't load.** The connector writes the same raw files as the synthetic sources | One pipeline for every source: the same validation, entity matching, quarantine and lineage apply to real data, with no second code path to test |
+| **Read-only by construction.** Data is only ever read with HTTP GET; the only POST is the OAuth token request | The integration cannot change the source system, even through a bug |
+| **Read-only identity.** Dedicated `opsintel.integration` user with `itil`, `cmdb_read`, `snc_read_only`, web-service-only | Least privilege; the OAuth app runs as this user, so tokens inherit its read-only roles |
+| **OAuth 2.0 client credentials** (basic auth still supported) | Recent releases block basic auth on REST APIs by default; client credentials is the standard machine-to-machine flow and needs no user password |
+| **Secrets only in environment / git-ignored `.env`** | Never in code, images or chat; the client-secret and password fields are hidden from logs and reprs |
+| **Stop after the first 401** in the access check | Repeated failed logins lock ServiceNow accounts |
+| **Gaps are recorded, not invented** (`source_manifest.json`) | Missing services, companies, due dates, outages and costs are visible and countable instead of silently filled |
+| **Separate data directory** (`data_servicenow/`, `make sn-ui` on port 8502) | Real and synthetic data never mix; both dashboards can run side by side |
+
+**Instance configuration that was needed** (Australia release developer instance):
+
+1. OAuth client-credentials app with *OAuth application user* = the integration user.
+2. System property `glide.oauth.inbound.client.credential.grant_type.enabled = true`. Without it every token request returns `access_denied`.
+3. App *Scope Restriction* = **Broadly scoped** (or add the `useraccount` auth scope). Otherwise the Table API refuses tokens with "Access to unscoped api is not allowed". Access is still limited by the user's read-only roles.
+
+Field-by-field mapping is in [data_dictionary.md](data_dictionary.md#servicenow-source-mapping). A standard instance has no finance ledger, monitoring feed or outage minutes, so cost, alert and downtime analyses report that the data is unavailable rather than failing.
+
+**Demo data.** A new developer instance has only a few dozen demo incidents spread over years. `tools/servicenow/seed_incidents.js` (run as admin in *Scripts – Background*) adds a year of realistic history with planted signals. Every seeded record is tagged `correlation_id = opsintel_seed` and can be removed with `remove_seed.js`.
+
 ## 5. Security architecture
 
 | Threat | Control | Where |
@@ -113,6 +160,9 @@ Every ETL run writes:
 | Numeric hallucination | Grounding check on every answer; ungrounded figures flagged in the UI and counted in evaluation | `ai/grounding.py` |
 | Unauthorised consequential actions | Propose → approve workflow, role check, segregation of duties (proposer cannot approve), evidence required | `governance/actions.py` |
 | Tampering with the audit trail | SHA-256 hash chain over every entry; `verify()` locates the first altered entry | `governance/audit.py` |
+| Source-system credentials leaked | OAuth client secret / password only in environment or git-ignored `.env`; never logged or printed; excluded from Docker images | `etl/servicenow.py`, `.gitignore`, `.dockerignore` |
+| Integration changes the source system | GET-only data access; read-only integration user (`snc_read_only`); demo-data seeding is a separate admin script, tagged for removal | `etl/servicenow.py`, `tools/servicenow/` |
+| Integration locks the service account | Access check stops at the first authentication failure | `etl/servicenow.py::check_access` |
 | Model safety refusal mid-workflow | `stop_reason == "refusal"` handled as an explicit abstention; server-side fallback (`fallbacks: "default"`) enabled | `ai/assistant.py` |
 
 ## 6. Mapping to PostgreSQL for a pilot
@@ -127,7 +177,7 @@ The MVP uses SQLite so it runs anywhere with no services. For a multi-user pilot
 | TF-IDF index | `pgvector` embeddings with the same `search()` interface; hybrid BM25 + vector ranking |
 | `audit_log` hash chain | Same, plus write-once export to object storage with retention lock |
 | Demo `X-User` header | OIDC (Entra ID) bearer tokens; group claims → roles |
-| CSV drops | ServiceNow Table API / scheduled export, incremental by `sys_updated_on` |
+| CSV drops / full ServiceNow extract | Scheduled ServiceNow sync, incremental by `sys_updated_on` (the connector already supports `--since-days`); OAuth credentials from a secrets manager |
 
 ## 7. Why these technology choices
 

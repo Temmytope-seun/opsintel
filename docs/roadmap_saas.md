@@ -7,7 +7,7 @@ _Everything commercial here is a **hypothesis to test**, not a forecast._
 | Weeks | Activity | Exit criterion |
 |---|---|---|
 | 1–2 | Discovery: system inventory, data access, DPIA, pick 2 business units | Signed DPIA; read-only extracts agreed |
-| 3–5 | Connect real ITSM + monitoring + finance extracts; re-baseline data quality | Reconciliation report accepted by data owners |
+| 3–5 | Connect the live ITSM instance with the existing ServiceNow connector (integration user + OAuth app agreed with the platform owner), then monitoring and finance extracts; re-baseline data quality | Reconciliation report accepted by data owners |
 | 6–7 | Re-write the benchmark with staff questions; run C1/C2 evaluation on real data | Targets met or gaps understood |
 | 8–11 | Live use by 8–12 staff; weekly feedback; user study tasks | SUS ≥ 68; no security incidents |
 | 12 | Review: value, risks, go/no-go for wider rollout | Board decision |
@@ -38,7 +38,7 @@ flowchart LR
 
 Key decisions:
 - **Isolation:** schema per tenant plus row-level security, with tenant id in every query context. Per-tenant encryption keys for the audit store.
-- **Connectors:** ServiceNow, Halo, Autotask, ConnectWise and common monitoring tools first. Target the CSV/REST contract already used in `opsintel/etl/connectors.py`.
+- **Connectors:** ServiceNow is built (Table API, OAuth 2.0 client credentials, read-only, lands into the shared raw format - `opsintel/etl/servicenow.py`). Halo, Autotask, ConnectWise and common monitoring tools follow the same land-then-validate pattern.
 - **Configurable semantics:** SLA definitions, metric definitions, role mappings and document classifications are tenant configuration, not code.
 - **Model routing:** routine KPI questions go to the rules engine (no LLM cost); open questions go to the LLM. Prompt caching covers the stable system prompt and tool schemas.
 
@@ -67,6 +67,6 @@ The token figure is measured by the harness (`usd_per_question` in `eval/results
 
 | Horizon | Capability |
 |---|---|
-| Now (MVP) | Unified data, KPIs, anomaly + risk, hybrid assistant, governance, evaluation |
-| Next (pilot) | Real connectors, PostgreSQL + pgvector, SSO, scheduled ETL, weekly risk digest |
+| Now (MVP) | Unified data, KPIs, anomaly + risk, hybrid assistant, governance, evaluation; live ServiceNow connector (OAuth, read-only) |
+| Next (pilot) | Scheduled incremental ServiceNow sync, monitoring and finance connectors, PostgreSQL + pgvector, SSO, weekly risk digest; optional write-back of approved actions as ServiceNow problem/change tasks (separate, approved credential) |
 | Later | Root-cause classification of free text, change-risk prediction, customer-facing SLA reports, multi-tenant SaaS |

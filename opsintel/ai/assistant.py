@@ -71,7 +71,9 @@ def extract_period(q: str, default: str = "last_quarter") -> str:
         return f"{m.group(2)}-{MONTHS[m.group(1)]:02d}"
     if re.search(r"previous quarter|prior quarter|quarter before", ql):
         return "previous_quarter"
-    if re.search(r"(last|this|latest|current|past) quarter", ql):
+    if re.search(r"(this|current) quarter|quarter to date", ql):
+        return "this_quarter"
+    if re.search(r"(last|latest|past) quarter", ql):
         return "last_quarter"
     if re.search(r"(this|current|latest) month", ql):
         return "this_month"
@@ -129,9 +131,17 @@ class RulesEngine:
     @staticmethod
     def _abstain(ctx: ToolContext, reason: str) -> str:
         cov = data_coverage()
-        return (f"{ABSTAIN_PREFIX}: {reason.rstrip('.')}.\n\nThe platform covers ITSM incidents and service requests, monitoring alerts, "
-                f"CMDB assets and service costs from {cov['first_date']} to {cov['snapshot_date']}. Try asking about SLA "
-                "breaches, root causes, downtime, operating cost changes, delivery risk or next week's SLA risk.")
+        has = {t: ctx.con.execute(f"SELECT EXISTS(SELECT 1 FROM {t})").fetchone()[0] for t in ("alerts", "costs")}
+        covers = ["ITSM incidents and service requests", "CMDB assets"]
+        topics = ["SLA breaches", "root causes", "incident volumes", "improvement priorities", "next week's SLA risk"]
+        if has["alerts"]:
+            covers.insert(1, "monitoring alerts")
+            topics.insert(2, "downtime")
+        if has["costs"]:
+            covers.append("service costs")
+            topics.insert(3, "operating cost changes")
+        return (f"{ABSTAIN_PREFIX}: {reason.rstrip('.')}.\n\nThe platform covers {', '.join(covers[:-1])} and {covers[-1]} "
+                f"from {cov['first_date']} to {cov['snapshot_date']}. Try asking about {', '.join(topics[:-1])} or {topics[-1]}.")
 
     @staticmethod
     def _err(ev: Evidence) -> str | None:
@@ -380,10 +390,17 @@ class RulesEngine:
 
 # ====================================================================== Claude engines
 
-SYSTEM_PROMPT = """You are OpsIntel, a decision-support assistant for the operations leadership of an IT services company \
-(managed IT support, telecoms, cloud hosting, data-centre operations, software development).
+ORG_DESCRIPTION = {
+    "synthetic": "an IT services company (managed IT support, telecoms, cloud hosting, data-centre operations, software development)",
+    "servicenow": "an organisation whose IT operations run on ServiceNow (business services include email, SAP, PeopleSoft, retail "
+                  "point of sale, trading and e-commerce systems). Incident and CMDB data come from its ServiceNow instance; there is "
+                  "no finance, monitoring or outage data",
+}
 
-The data is a snapshot ending {snapshot}. "This month" means {this_month}; "last quarter" means {last_quarter}; \
+SYSTEM_PROMPT = """You are OpsIntel, a decision-support assistant for the operations leadership of {org}.
+
+The data is a snapshot ending {snapshot}. "This month" means {this_month}; "last quarter" means {last_quarter} (the latest \
+complete quarter; "this quarter" means {current_quarter}, which may be partial); \
 "next week" means the week after the snapshot. Data starts {start}.
 
 How to work:
@@ -407,7 +424,7 @@ The user is {user_name}, role: {role} ({role_desc})."""
 
 def _system(user: User) -> str:
     cov = data_coverage()
-    return SYSTEM_PROMPT.format(snapshot=cov["snapshot_date"], this_month=cov["snapshot_date"][:7], last_quarter=cov["last_quarter"],
+    return SYSTEM_PROMPT.format(org=ORG_DESCRIPTION.get(config.SOURCE, ORG_DESCRIPTION["synthetic"]), snapshot=cov["snapshot_date"], this_month=cov["snapshot_date"][:7], last_quarter=cov["last_quarter"], current_quarter=cov["current_quarter"],
                                 start=cov["first_date"], abstain=ABSTAIN_PREFIX, user_name=user.full_name, role=user.role.name,
                                 role_desc=user.role.description)
 

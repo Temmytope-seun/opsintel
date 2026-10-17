@@ -6,7 +6,7 @@ A multi-service IT company (managed support, telecoms, cloud hosting, data-centr
 
 **Proof-of-concept goal:** cut the time from "a metric moved" to "an evidence-backed, approved action" for IT service operations, without sacrificing correctness, data protection or accountability.
 
-> Scope note: this is a proposed proof of concept built on synthetic data. The target company's real systems, bottlenecks and data architecture have not been confirmed and must be validated in discovery (see §7).
+> Scope note: this is a proposed proof of concept. It runs on synthetic data by default and has also been connected to a live ServiceNow developer instance through the Table API (see `architecture.md` §4a). The target company's real systems, bottlenecks and data architecture have not been confirmed and must be validated in discovery (see §7).
 
 ## 2. Stakeholders and personas
 
@@ -51,6 +51,7 @@ flowchart LR
 | US7 | As an auditor, I want an unalterable record of questions, evidence and decisions | Hash chain verifies; tampering detected at the exact entry (`tests/test_security.py`) |
 | US8 | As any user, I want the system to say "I don't know" rather than guess | Abstains on out-of-scope or out-of-range questions (`eval A1–A5`) |
 | US9 | As an analyst, I want to trust that integrated data matches the sources | Before/after quality metrics, quarantined rejects with reasons, reconciliation against truth (`eval §2`) |
+| US10 | As an ops manager, I want OpsIntel to read our live ServiceNow instance without being able to change it | Read-only OAuth integration user; GET-only connector; same validation, quarantine and lineage as other sources; mapping gaps recorded in a manifest (`tests/test_servicenow.py`, live sync of 1,474 incidents with 0 rejects and 0 FK violations) |
 
 ## 5. Non-functional requirements
 
@@ -73,6 +74,7 @@ flowchart LR
 | 3 | Synthetic data patterns resemble reality | Treat all results as method validation, then re-run the evaluation on a pilot extract |
 | 4 | Users will trust AI recommendations | Evidence panel, abstention, human approval and training. Measure trust in the pilot |
 | 5 | LLM cost and latency are acceptable | Measure tokens per question (the harness records usage); caching; rules engine for routine KPIs |
+| 6 | The ITSM instance exposes the fields we need to an integration account | Confirmed on a developer instance: basic auth blocked by default (OAuth required), and some fields (e.g. `problem_id`) hidden by field ACLs. Agree roles and the OAuth app with the platform owner early |
 
 ## 7. Discovery questions for the partner company
 
@@ -82,3 +84,5 @@ flowchart LR
 4. Is root cause captured consistently at closure? Is problem management in place?
 5. What are the constraints on data residency, retention and use of third-party AI services?
 6. Who must approve operational changes recommended by analysis today?
+7. Who owns the ServiceNow platform, and what is the process for an integration user, an OAuth client-credentials app and a REST API access policy?
+8. Are business service, company and root-cause/problem links populated consistently on incidents? (On the developer instance most demo incidents had no business service.)

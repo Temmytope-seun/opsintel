@@ -4,16 +4,16 @@ _A DPIA-style screening plus an AI risk register for the proof of concept. A pil
 
 ## 1. Processing description
 
-| Item | MVP (synthetic) | Pilot (proposed) |
-|---|---|---|
-| Purpose | Operational decision support: performance, risk, cost and procedure guidance | Same |
-| Data subjects | None (synthetic) | Customer contacts, staff named in tickets (assignees, account managers) |
-| Personal data | Synthetic contact e-mails and phones (to prove controls work) | Contact details, staff names, free text that may contain personal data |
-| Special category data | None | Not expected; free text must be screened |
-| Lawful basis (UK GDPR) | n/a | Legitimate interests (operational management), subject to an LIA |
-| Recipients | Internal roles only | Internal roles; LLM provider as processor (DPA required) |
-| International transfers | n/a | Depends on the LLM provider's region; use UK/EU processing or IDTA/SCCs |
-| Retention | n/a | Operational data per existing ITSM policy; audit log 6 years (proposed) |
+| Item | MVP (synthetic) | MVP (ServiceNow developer instance) | Pilot (proposed) |
+|---|---|---|---|
+| Purpose | Operational decision support: performance, risk, cost and procedure guidance | Same, plus proving a live integration | Same |
+| Data subjects | None (synthetic) | ServiceNow's fictional demo users and companies | Customer contacts, staff named in tickets (assignees, account managers) |
+| Personal data | Synthetic contact e-mails and phones (to prove controls work) | Fictional names on caller, assignee and company references; no contact details are extracted | Contact details, staff names, free text that may contain personal data |
+| Special category data | None | None | Not expected; free text must be screened |
+| Lawful basis (UK GDPR) | n/a | n/a (fictional data) | Legitimate interests (operational management), subject to an LIA |
+| Recipients | Internal roles only | Internal roles only | Internal roles; LLM provider as processor (DPA required) |
+| International transfers | n/a | Developer instance hosted by ServiceNow (region per instance) | Depends on the LLM provider's region; use UK/EU processing or IDTA/SCCs |
+| Retention | n/a | Local extract in `data_servicenow/`, deletable at any time; instance reclaimed by ServiceNow when idle | Operational data per existing ITSM policy; audit log 6 years (proposed) |
 
 ## 2. Data minimisation by design
 
@@ -39,6 +39,10 @@ Likelihood (L) and impact (I) are scored 1–3, before and after controls.
 | R8 | Audit trail tampering | 1×3 | Hash chain; verification endpoint; off-box export in pilot | 1×1 | tests |
 | R9 | LLM service outage or refusal | 2×2 | Rules-engine fallback; refusal handled as explicit abstention; server-side fallback model | 1×1 | `assistant.py` |
 | R10 | Biased prioritisation (e.g. smaller customers deprioritised) | 2×2 | Risk scores are per service, not per customer; review scoring weights with service owners | 1×2 | `kpis.improvement_priorities` method |
+| R11 | Source-system credential leak (ServiceNow OAuth secret / password) | 2×3 | Secrets only in environment or git-ignored `.env`; never logged; excluded from images; rotate on exposure; secrets manager in pilot | 1×2 | `etl/servicenow.py`, `.gitignore` |
+| R12 | Over-privileged integration account | 2×3 | Dedicated web-service-only user with read roles and `snc_read_only`; GET-only connector; OAuth app runs as that user | 1×2 | `docs/architecture.md` §4a |
+| R13 | Broad OAuth token scope ("Broadly scoped") lets a stolen token call any REST API the user can read | 2×2 | Accepted on a developer instance; in a pilot, use a REST API access policy limited to the Table API endpoints the connector needs | 1×2 | Instance configuration |
+| R14 | Demo-data seeding changes the source instance | 1×2 | Admin-run script, idempotent, every record tagged `opsintel_seed`, removal script is a dry run by default; never run against production | 1×1 | `tools/servicenow/` |
 
 ## 4. Alignment with frameworks
 
@@ -55,3 +59,5 @@ Likelihood (L) and impact (I) are scored 1–3, before and after controls.
 2. The LLM provider's data retention and processing region must be confirmed contractually.
 3. The pilot audit-log retention period needs agreement with the DPO.
 4. Staff names (assignees) could enable performance monitoring of individuals. The pilot should aggregate to team level unless there is an agreed purpose.
+5. The ServiceNow connector extracts reference fields (caller, assignee, company) as identifiers only and no contact details. For a production instance, confirm with the DPO which reference fields may be extracted at all, and whether caller identity should be pseudonymised at landing.
+6. ServiceNow field-level access controls can hide fields from the integration user (observed for `incident.problem_id`). Any role added to make more fields visible must be reviewed against the minimisation principle above.

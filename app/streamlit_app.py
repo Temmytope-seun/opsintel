@@ -36,6 +36,21 @@ EXAMPLES = [
     "Which services are at greatest risk of missing their SLA next week?",
     "What should the support team do when a recurring network incident occurs?",
 ]
+# ServiceNow data has incidents, requests and the CMDB but no costs, monitoring or outages, so the
+# suggestions point at what it can answer (each checked against the live extract). The second list
+# needs open-ended "why" reasoning, which only the Claude engine provides.
+EXAMPLES_SERVICENOW = [
+    "Which incident category had the highest SLA breach rate last quarter, and what explains the increase?",
+    "How many incidents were opened in September 2026?",
+    "Which services are at greatest risk of missing their SLA next week?",
+    "Which business process should we improve first, and why?",
+    "Which services have the most open incidents past their SLA target?",
+    "Have there been any unusual spikes in incidents recently?",
+]
+EXAMPLES_SERVICENOW_CLAUDE = [
+    "What is driving the rise in Network incidents since July 2026?",
+    "Why did Software incidents jump in September 2026?",
+]
 
 
 @st.cache_resource
@@ -203,7 +218,13 @@ elif page == "Ask OpsIntel":
         st.session_state.history = []
     ex_cols = st.columns(2)
     picked = None
-    for i, q in enumerate(EXAMPLES):
+    if config.SOURCE == "servicenow":
+        examples = EXAMPLES_SERVICENOW + (EXAMPLES_SERVICENOW_CLAUDE if engine == "claude" else [])
+        st.caption("Suggested questions are tailored to the ServiceNow data: incidents, requests and the CMDB. "
+                   + ("" if engine == "claude" else "Switch to the Claude engine for open-ended 'why' questions."))
+    else:
+        examples = EXAMPLES
+    for i, q in enumerate(examples):
         if ex_cols[i % 2].button(q, key=f"ex{i}", width="stretch"):
             picked = q
     prompt = st.chat_input("Ask a question about operations, SLAs, costs, risks or procedures") or picked

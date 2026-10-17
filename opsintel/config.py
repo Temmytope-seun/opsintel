@@ -6,6 +6,25 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(os.environ.get("OPSINTEL_ROOT", Path(__file__).resolve().parent.parent))
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    """Read KEY=VALUE lines from the git-ignored .env (secrets such as ANTHROPIC_API_KEY,
+    SN_CLIENT_SECRET). Variables already set in the environment win."""
+    path = path or (ROOT / ".env")
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        v = v.strip().strip('"').strip("'")
+        if v:  # an empty placeholder must not mask a real value from the environment
+            os.environ.setdefault(k.strip(), v)
+
+
+load_dotenv()
 DATA_DIR = Path(os.environ.get("OPSINTEL_DATA_DIR", ROOT / "data"))
 KNOWLEDGE_DIR = Path(os.environ.get("OPSINTEL_KNOWLEDGE_DIR", ROOT / "knowledge"))
 

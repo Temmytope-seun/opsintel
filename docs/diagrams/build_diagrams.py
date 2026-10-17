@@ -162,13 +162,13 @@ def p_architecture():
 
     bw, by = 238, 128
     src = [p.cylinder(L + 20 + i * 258, by, bw, 95, t, "source") for i, t in enumerate([
-        "CMDB<br>relational DB · services, assets, customers, SLA definitions",
-        "ITSM exports<br>incidents & requests CSV",
+        "CMDB<br>relational DB (synthetic) or live ServiceNow cmdb tables",
+        "ITSM<br>CSV exports (synthetic) or live ServiceNow Table API (OAuth)",
         "Finance ledger<br>monthly CSV export",
         "Monitoring platform<br>paginated REST API",
         "Knowledge base<br>runbooks · policies · problem records"])]
     ig = [p.box(L + 20 + i * 215, 305, 200, 105, t, "integration") for i, t in enumerate([
-        "Connectors<br>csv · rdbms · REST pagination",
+        "Connectors<br>csv · rdbms · REST · ServiceNow (OAuth, GET-only)",
         "Profiling<br>quality metrics before & after",
         "Clean & conform<br>parse dates · dedupe · currency · case",
         "Entity matching<br>normalise → alias → fuzzy",
@@ -508,9 +508,11 @@ def p_deploy():
     api = p.box(420, 260, 280, 90, "api container<br>uvicorn FastAPI :8000", "interface")
     img = p.box(80, 400, 620, 120, "Same image (python:3.11-slim, non-root user)<br>opsintel package · knowledge base · setup at build time:<br>generate synthetic sources → ETL → data dictionary", "external", align="left")
     vol = p.cylinder(250, 580, 280, 100, "opsdata volume<br>opsintel.db · raw sources · truth (eval only)", "foundation")
+    sn = p.box(555, 585, 175, 90, "ServiceNow instance<br>Table API · OAuth · read-only", "source")
+    p.edge(img, sn, "make sn-sync", dashed=True, exit=(1, 0.8), entry=(0.5, 0))
     an = p.box(80, 760, 280, 90, "Anthropic API<br>claude-opus-5-5 · ANTHROPIC_API_KEY env", "external")
     wh = p.box(420, 760, 280, 90, "Webhook (optional)<br>Teams / Slack · OPSINTEL_WEBHOOK_URL", "external")
-    ci = p.box(80, 880, 620, 70, "GitHub Actions CI<br>setup → pytest (54 tests) → eval (rules) → upload report artifact", "external")
+    ci = p.box(80, 880, 620, 70, "GitHub Actions CI<br>setup → pytest (62 tests) → eval (rules) → upload report artifact", "external")
     other = p.actor(640, 140, "Other systems")
     p.edge(u, ui, "HTTPS")
     p.edge(other, api, "REST + X-User (→ OIDC)")
@@ -549,7 +551,7 @@ def p_deploy():
     p.edge(gw, svc, "", exit=(0.5, 1), entry=(0.5, 0))
     p.edge(auth, gw, "", exit=(0.5, 0), entry=(0.5, 1))
     p.edge(svc, aud, "", dashed=True, exit=(0, 1), entry=(1, 0.5))
-    p.text(X + 20, 870, 830, 80, "Pilot mapping: SQLite → PostgreSQL 16 · authorizer → read-only DB role with column privileges + statement_timeout · TF-IDF → pgvector · X-User header → Entra ID OIDC group claims · CSV drops → ServiceNow Table API incremental by sys_updated_on.", size=11, color="#444444")
+    p.text(X + 20, 870, 830, 80, "Pilot mapping: SQLite → PostgreSQL 16 · authorizer → read-only DB role with column privileges + statement_timeout · TF-IDF → pgvector · X-User header → Entra ID OIDC group claims · ServiceNow connector (built, OAuth) → scheduled incremental sync by sys_updated_on with secrets from a vault.", size=11, color="#444444")
     return p
 
 
@@ -597,8 +599,70 @@ def p_eval():
     return p
 
 
+# =========================================================================== 10. ServiceNow integration
+
+def p_servicenow():
+    p = Page("10 ServiceNow integration", 1700, 1180)
+    p.title("Live ServiceNow integration", "A read-only connector lands a real instance into the same raw format as the synthetic sources, so one pipeline validates both.")
+    # left: instance configuration
+    p.band(30, 90, 470, 520, "In the ServiceNow instance (one-off, by an admin)", "source")
+    cfg = [p.box(50, 135 + i * 92, 430, 76, t, "source", align="left", size=11) for i, t in enumerate([
+        "1 · Integration user<br>opsintel.integration · roles itil, cmdb_read, snc_read_only · web-service access only",
+        "2 · OAuth client-credentials app<br>Machine Identity Console · OAuth application user = integration user",
+        "3 · System property<br>glide.oauth.inbound.client.credential.grant_type.enabled = true",
+        "4 · Token scope<br>Scope Restriction = Broadly scoped (pilot: REST API access policy for the Table API only)",
+        "5 · Secrets to OpsIntel<br>client id + secret into git-ignored .env - never in chat, code or images"])]
+    for a, b in zip(cfg, cfg[1:]):
+        p.edge(a, b)
+    # middle: runtime flow
+    X = 540
+    p.band(X, 90, 560, 760, "At run time:  make sn-test  /  make sn-sync", "integration")
+    env = p.box(X + 20, 135, 240, 60, ".env / environment<br>SN_INSTANCE · SN_CLIENT_ID · SN_CLIENT_SECRET", "governance", size=11)
+    tok = p.box(X + 300, 135, 240, 60, "POST /oauth_token.do<br>client_credentials → bearer token", "integration", size=11)
+    get = p.box(X + 300, 230, 240, 90, "GET /api/now/table/…<br>incident · sc_req_item · cmdb_ci_service · core_company · business_unit · referenced cmdb_ci<br>1,000 rows per page", "integration", size=11)
+    chk = p.diamond(X + 20, 230, 240, 100, "401? stop after first failure (avoid account lockout)", "integration")
+    land = p.box(X + 300, 360, 240, 90, "Land (raw format)<br>cmdb.sqlite · itsm_incidents.csv · itsm_requests.csv · source_manifest.json", "integration", size=11)
+    gap = p.box(X + 20, 365, 240, 80, "Mapping gaps recorded, not invented<br>no service / company · default due dates · no costs, alerts, outages", "governance", size=11)
+    pipe = p.box(X + 160, 490, 260, 80, "Same ETL pipeline<br>validate · entity match · quarantine · lineage · load", "integration")
+    store = p.cylinder(X + 160, 610, 260, 90, "data_servicenow/opsintel.db<br>separate from synthetic data", "foundation")
+    ui = p.box(X + 160, 740, 260, 70, "make sn-ui → :8502<br>source + date range shown; missing data explained", "interface", size=11)
+    p.edge(env, tok)
+    p.edge(tok, get)
+    p.edge(get, chk, "error", dashed=True, exit=(0, 0.5), entry=(1, 0.5))
+    p.edge(get, land)
+    p.edge(land, gap, "", dashed=True, exit=(0, 0.5), entry=(1, 0.5))
+    p.edge(land, pipe, exit=(0.5, 1), entry=(0.75, 0))
+    p.edge(pipe, store)
+    p.edge(store, ui)
+    p.edge(cfg[4], env, "", dashed=True, exit=(1, 0.5), entry=(0, 0.5))
+    # right: what we learned
+    R = 1130
+    p.band(R, 90, 540, 760, "Lessons from a real instance (Australia release)", "governance")
+    lessons = [
+        ("Basic auth refused (401) - even for admin", "REST API blocks password auth by default → connector supports OAuth client credentials"),
+        ("Token request: access_denied", "Client-credentials grant is off until the system property is created"),
+        ("403: Access to unscoped api is not allowed", "Token scope excluded the Table API → broaden scope or add a REST API access policy"),
+        ("incident.problem_id missing from responses", "Field ACL hides it from the integration user → root cause falls back to subcategory"),
+        ("66 of 67 demo incidents had no business service", "Real-world gap; quarantined/placeholder and counted in the manifest"),
+        ("Too little history for analytics", "seed_incidents.js adds a year of realistic, tagged history (removable)"),
+    ]
+    for i, (sym, fix) in enumerate(lessons):
+        y = 135 + i * 115
+        a = p.box(R + 20, y, 220, 90, sym, "ai", size=11)
+        b = p.box(R + 280, y, 240, 90, fix, "external", bold_first=False, size=11, align="left")
+        p.edge(a, b)
+    # bottom: results + seed tools
+    p.box(30, 640, 470, 210, "Seed tools (tools/servicenow/)<br>seed_incidents.js - ~1,400 incidents over 12 months on the instance's own services, CIs, groups, users; "
+          "planted VPN problem (Jul→), mail TLS spike (Sep), Retail POS peak (Black Friday)<br>link_problems.js - problem records + links<br>"
+          "remove_seed.js - dry run by default<br>All tagged correlation_id = opsintel_seed · run as admin in Scripts - Background", "source", align="left", size=11)
+    p.box(30, 880, 1640, 110, "Live result<br>1,474 incidents · 0 rejects · 0 FK violations · Network breach rate 11.1% → 34.4% (Q2 → Q3 2026) driven by VPN (1 → 29 breaches) · "
+          "email incidents 14 → 95 (Aug → Sep) · gaps: 181 incidents without service, 242 without company · costs / downtime answered as 'not available from this source'",
+          "interface", align="left")
+    return p
+
+
 def main():
-    pages = [p_architecture(), p_etl(), p_sequence(), p_loop(), p_security(), p_actions(), p_erd(), p_deploy(), p_eval()]
+    pages = [p_architecture(), p_etl(), p_sequence(), p_loop(), p_security(), p_actions(), p_erd(), p_deploy(), p_eval(), p_servicenow()]
     mx = ET.Element("mxfile", host="app.diagrams.net", type="device", version="24.7.17")
     for pg in pages:
         mx.append(pg.xml())

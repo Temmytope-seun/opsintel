@@ -79,7 +79,7 @@ add(
   new Paragraph({ children: [new TextRun({ text: "A page-by-page explanation of every block, flow and decision in opsintel_architecture.drawio", size: 24, color: "595959" })], spacing: { after: 600 } }),
   P("**Project:** OpsIntel AI - a governed, LLM-assisted operational intelligence platform for IT service businesses (proof of concept on synthetic data)."),
   P("**Companion files:** `docs/diagrams/opsintel_architecture.drawio` (the diagrams), `docs/diagrams/build_diagrams.py` (generates them), `docs/architecture.md`, `docs/evaluation_report.md`."),
-  P("**Data notice:** every figure in this guide comes from the synthetic data set (fictional company, seed 42, snapshot 30 September 2026). Nothing describes a real organisation."),
+  P("**Data notice:** figures on pages 1-9 come from the synthetic data set (fictional company, seed 42, snapshot 30 September 2026). Page 10 figures come from a ServiceNow developer instance (ServiceNow demo records plus history seeded by this project). Nothing describes a real organisation."),
   new Paragraph({ children: [new PageBreak()] }),
   new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Contents")] }),
   new TableOfContents("Contents", { hyperlink: true, headingStyleRange: "1-2" }),
@@ -88,7 +88,7 @@ add(
 
 // How to read
 add(H1("How to read the diagrams"));
-add(P("The file contains nine pages, shown as tabs along the bottom of draw.io. Each page answers one question about the design. The pages use the same visual language throughout, so once you know the conventions below you can read any page."));
+add(P("The file contains ten pages, shown as tabs along the bottom of draw.io. Each page answers one question about the design. The pages use the same visual language throughout, so once you know the conventions below you can read any page."));
 add(H2("Colour = architectural layer"));
 add(table(["Colour", "Layer", "Meaning"], [
   ["Blue", "Enterprise sources", "Systems the platform reads from. It never writes back to them."],
@@ -111,7 +111,7 @@ add(table(["Shape / line", "Meaning"], [
   ["Dashed arrow", "A return message, an optional path, or a governance relationship (control applies to)."],
   ["Pale-yellow note (sequence page)", "Work done inside one participant, not a message between participants."],
 ], [2.4, 6.6]));
-add(callout("The one idea that runs through all nine pages",
+add(callout("The one idea that runs through all ten pages",
   "The language model sits on top of a deterministic analytics layer that it cannot bypass. It never touches the database directly; it asks for tools, and every tool call is validated, permission-checked, executed by tested code, screened, and recorded as numbered evidence. Answers are then checked figure-by-figure against that evidence. Every page below is a different view of that idea."));
 
 // ================================================================ PAGE 1
@@ -120,15 +120,15 @@ add(P("**Question this page answers:** what are the parts of the system, how are
 add(P("Read it top to bottom: data enters at layer 1 and becomes decisions at layer 5. The grey column on the right applies to every layer. The people at the bottom are the five user roles."));
 add(H2("Layer 1 - Enterprise sources (blue)"));
 add(blocks([
-  ["CMDB (relational DB)", "Configuration management database holding business units, services (with alternative names), customers, assets/configuration items and SLA definitions. In the MVP it is a separate SQLite file (`data/raw/cmdb.sqlite`) with ServiceNow-like table names (`cmdb_service`, `cmdb_ci`, `core_company`, `sla_definition`).", "Reference data is the backbone for matching everything else, so it is read first. Read-only connection (`mode=ro`) proves the platform cannot alter a source. Code: `etl/connectors.py::read_sql_table`."],
-  ["ITSM exports (CSV)", "Incident and service-request exports, as a ServiceNow/Halo report would produce. 7,680 incident rows and 4,244 request rows arrive, including deliberate defects: duplicates, stale versions, two date formats, misspelled service names, missing priorities, test tickets, impossible timestamps and orphan customers.", "CSV export is the lowest-common-denominator integration every ITSM supports, so it is the realistic first step in a pilot. Defects are injected so data-quality handling can be measured, not assumed."],
+  ["CMDB (relational DB or live ServiceNow)", "Configuration management database holding business units, services (with alternative names), customers, assets/configuration items and SLA definitions. In synthetic mode it is a separate SQLite file (`data/raw/cmdb.sqlite`) with ServiceNow-like table names (`cmdb_service`, `cmdb_ci`, `core_company`, `sla_definition`). In live mode the same tables are read from a ServiceNow instance (page 10).", "Reference data is the backbone for matching everything else, so it is read first. Read-only connection (`mode=ro`) proves the platform cannot alter a source. Code: `etl/connectors.py::read_sql_table`."],
+  ["ITSM (CSV or live ServiceNow)", "Incident and service-request records. In synthetic mode they arrive as exports, as a ServiceNow/Halo report would produce; in live mode they are read from the ServiceNow Table API with OAuth (page 10). 7,680 incident rows and 4,244 request rows arrive, including deliberate defects: duplicates, stale versions, two date formats, misspelled service names, missing priorities, test tickets, impossible timestamps and orphan customers.", "CSV export is the lowest-common-denominator integration every ITSM supports, so it is the realistic first step in a pilot. Defects are injected so data-quality handling can be measured, not assumed."],
   ["Finance ledger (CSV)", "Monthly cost lines per service and cost type (Staff, Licences, Third-party, Hardware, Energy) with a narrative description. Amounts arrive as strings like `£12,345.67`, months as either `2026-09` or `Sep-2026`, plus re-export duplicates.", "Cost explanations need the ledger narrative (e.g. 'Hypervisor licence true-up'), not just numbers - that is what lets the assistant say *why* cost moved."],
   ["Monitoring platform (REST API)", "A paginated JSON API of monitoring events (`/v1/alerts?page=`). It mimics at-least-once delivery (150 duplicate events) and inconsistent severity case, and only knows asset ids, not services. A mock is bundled (`sources/mock_monitoring.py`); a real URL can be set with `OPSINTEL_MONITORING_URL`.", "Shows a genuine API integration with pagination, not just file drops. In-process mock keeps the demo offline while exercising the same HTTP contract."],
   ["Knowledge base", "Markdown runbooks, policies and a problem record, each with front-matter (id, owner, review date, classification public/internal/restricted). One vendor bulletin deliberately contains a prompt-injection payload.", "Front-matter classification enables document-level access control. The planted injection is how the security controls are tested end to end."],
 ]));
 add(H2("Layer 2 - Integration & data quality (green)"));
 add(blocks([
-  ["Connectors", "Three connector types: CSV (read everything as text), relational (read-only SQL), REST (follows `next_page` until done). Each returns the data plus provenance: source URI and SHA-256 hash.", "Reading as text makes bad values visible instead of silently coerced. The hash proves exactly which file version produced a table. Code: `etl/connectors.py`."],
+  ["Connectors", "Four connector types: CSV (read everything as text), relational (read-only SQL), REST (follows `next_page` until done), and ServiceNow (Table API, OAuth 2.0 client credentials, GET-only, lands into the same raw format). Each returns the data plus provenance: source URI and SHA-256 hash.", "Reading as text makes bad values visible instead of silently coerced. The hash proves exactly which file version produced a table. Code: `etl/connectors.py`."],
   ["Profiling", "The same quality metrics are computed on the raw data (before) and the loaded data (after): rows, missing required cells, exact duplicate rows, duplicate keys, schema violations, unmatched references.", "Measuring before and after turns 'we cleaned the data' into evidence. Results go to `dq_results` and the Data quality page. Code: `etl/quality.py::profile`."],
   ["Clean & conform", "Trim whitespace; parse ISO and UK `dd/mm/yyyy` dates; drop exact duplicates; keep the latest version of each incident by `sys_updated_on`; parse £ amounts; normalise month format and severity case.", "Each step is recorded by name (and count) in lineage, so an auditor can replay the reasoning. Code: `etl/pipeline.py`."],
   ["Entity matching", "Turns free-text service names into service ids in four tiers: normalised exact match → CMDB alias → fuzzy match (similarity ≥ 0.88) → unmatched (quarantined). On the incident export: 7,332 exact/normalised, 192 fuzzy, 0 unmatched.", "Free-text names are the most common integration failure between systems. Tiers make the matching explainable; the 0.88 cut-off favours precision (a wrong match is worse than a quarantined row). Code: `etl/quality.py::EntityMatcher`."],
@@ -421,11 +421,12 @@ add(blocks([
   ["Staff browser / Other systems", "People use the dashboard over HTTPS; other systems call the REST API (demo `X-User` header, OIDC in a pilot).", ""],
   ["ui container", "Streamlit on port 8501.", "Separate from the API so each can scale and restart independently."],
   ["api container", "Uvicorn + FastAPI on port 8000.", ""],
-  ["Same image", "Both containers come from one image: Python 3.11 slim, non-root user, the `opsintel` package and knowledge base. At build time it generates the synthetic sources, runs the ETL and writes the data dictionary.", "One artefact, one set of dependencies, no drift between UI and API. Non-root reduces the impact of a container compromise. All 54 tests pass inside the built image."],
+  ["Same image", "Both containers come from one image: Python 3.11 slim, non-root user, the `opsintel` package and knowledge base. At build time it generates the synthetic sources, runs the ETL and writes the data dictionary.", "One artefact, one set of dependencies, no drift between UI and API. Non-root reduces the impact of a container compromise. All 62 tests pass inside the built image, and the git-ignored .env file with source credentials is excluded from it."],
   ["opsdata volume", "Shared volume holding the database and source files.", "Data survives container restarts and is shared by both services."],
   ["Anthropic API", "Reached only if `ANTHROPIC_API_KEY` is set in the environment.", "Secrets come from the environment, never from the image or repository."],
   ["Webhook (optional)", "Teams/Slack incoming webhook via `OPSINTEL_WEBHOOK_URL`.", ""],
-  ["GitHub Actions CI", "On every push: setup → pytest → evaluation (rules engine) → upload the evaluation report.", "Every change is re-tested and re-evaluated automatically."],
+  ["ServiceNow instance", "The live source system, reached by `make sn-sync` through the Table API with OAuth client credentials (dashed arrow from the image).", "External and read-only: the connector only reads; credentials come from the environment, not the image."],
+  ["GitHub Actions CI", "On every push: setup → pytest (62 tests) → evaluation (rules engine) → upload the evaluation report.", "Every change is re-tested and re-evaluated automatically."],
 ]));
 add(H2("Right - proposed multi-tenant SaaS"));
 add(blocks([
@@ -438,7 +439,7 @@ add(blocks([
   ["LLM provider (regional endpoint)", "UK/EU processing where available.", "Data residency for UK GDPR."],
   ["Immutable audit store", "Write-once storage with per-tenant encryption keys.", "Audit evidence that even the platform operator cannot rewrite."],
 ]));
-add(P("**Pilot mapping (text at the bottom of the page):** SQLite → PostgreSQL 16; SQLite authorizer → read-only database role with column privileges and `statement_timeout`; TF-IDF → pgvector; `X-User` header → Entra ID OIDC group claims; CSV drops → ServiceNow Table API, incremental by `sys_updated_on`."));
+add(P("**Pilot mapping (text at the bottom of the page):** SQLite → PostgreSQL 16; SQLite authorizer → read-only database role with column privileges and `statement_timeout`; TF-IDF → pgvector; `X-User` header → Entra ID OIDC group claims; the existing ServiceNow connector → a scheduled incremental sync by `sys_updated_on`, with secrets from a vault."));
 
 // ================================================================ PAGE 9
 add(H1("Page 9 - Research evaluation design"));
@@ -475,6 +476,45 @@ add(B("**C2's grounding flags:** 5 genuine cases of the model doing arithmetic o
 add(B("**Variance:** this is one run; an earlier identical run scored 28/28 for C2. The protocol calls for at least three runs per condition."));
 add(callout("Threats to validity (bottom-left of the page)", "The data, planted signals and questions share an author, which inflates absolute scores - so the meaningful output is the comparison between conditions on identical items. The next step is to re-run on a real pilot extract with questions written by operations staff.", "FFF7E6", "B7791F"));
 
+// ================================================================ PAGE 10
+add(H1("Page 10 - Live ServiceNow integration"));
+add(P("**Question this page answers:** how does OpsIntel read a real ServiceNow instance, what had to be configured, and what did a real instance teach us?"));
+add(P("Three columns: the one-off configuration an administrator does in the instance (left, blue), what happens each time the connector runs (middle, green), and the problems a real instance raised with how each was solved (right, grey). The two wide boxes at the bottom are the demo-data tools and the measured result."));
+add(H2("Left - configuration in the instance"));
+add(blocks([
+  ["1 · Integration user", "`opsintel.integration` with roles `itil`, `cmdb_read`, `snc_read_only`, ticked *web service access only*.", "Least privilege: it can read incidents, requests and the CMDB, cannot write anything (`snc_read_only`) and cannot log in to the UI."],
+  ["2 · OAuth client-credentials app", "Created in the Machine Identity Console. Its *OAuth application user* is the integration user, so every token acts with that user's read-only roles.", "Client credentials is the standard machine-to-machine flow: no user password is ever sent."],
+  ["3 · System property", "`glide.oauth.inbound.client.credential.grant_type.enabled = true`.", "Without it ServiceNow refuses every client-credentials token request (`access_denied`)."],
+  ["4 · Token scope", "*Scope Restriction* set to **Broadly scoped** (equivalent: add the `useraccount` scope).", "A *Securely scoped* token is refused by the Table API (\"Access to unscoped api is not allowed\"). Broad scope is accepted on a developer instance; a pilot should instead use a REST API access policy limited to the Table API."],
+  ["5 · Secrets to OpsIntel", "Client id and secret go into the git-ignored `.env` (or environment variables).", "Secrets never appear in code, Docker images, logs or chat."],
+]));
+add(H2("Middle - each run (make sn-test, make sn-sync)"));
+add(blocks([
+  [".env / environment", "`SN_INSTANCE`, `SN_CLIENT_ID`, `SN_CLIENT_SECRET` (or `SN_USERNAME` / `SN_PASSWORD` for basic auth).", "OAuth is chosen automatically when a client id is present."],
+  ["POST /oauth_token.do", "Exchanges the client id and secret for a bearer token; refreshed before it expires.", "The only POST the connector ever makes."],
+  ["GET /api/now/table/…", "Reads incidents, requested items, business services, companies, business units, and only the configuration items that incidents reference - 1,000 rows per page with values and display values.", "GET-only: the connector cannot change the instance. Paging keeps memory flat; retries handle rate limits."],
+  ["Decision: 401?", "If authentication fails, the access check stops after the first failure.", "Repeated failed logins lock ServiceNow accounts - learnt during setup."],
+  ["Land (raw format)", "Writes `cmdb.sqlite`, `itsm_incidents.csv`, `itsm_requests.csv` and `source_manifest.json` in `data_servicenow/raw`.", "Same shapes as the synthetic sources, so no second pipeline is needed."],
+  ["Mapping gaps recorded", "Incidents without a business service or company, requests without a due date, and the absence of costs, alerts and outage minutes are counted in the manifest.", "Gaps are made visible instead of filled with invented values."],
+  ["Same ETL pipeline", "Validation, entity matching, quarantine and lineage exactly as on page 2.", "Real and synthetic data get identical quality treatment."],
+  ["data_servicenow/opsintel.db", "A separate database.", "Real and synthetic data never mix."],
+  ["make sn-ui → :8502", "The dashboard on ServiceNow data, showing the source and date range; analyses that need missing data say so.", "Runs alongside the synthetic dashboard on :8501."],
+]));
+add(H2("Right - lessons from a real instance (decisions)"));
+add(decision([
+  ["Basic auth refused (401) - even for admin", "Added OAuth 2.0 client-credentials support to the connector; basic auth kept for instances that allow it.", "Recent releases block password authentication on REST APIs by default, so a ServiceNow integration should plan for OAuth from day one."],
+  ["Token request: access_denied", "Created the client-credentials system property.", "The grant type is disabled until that property exists; the console only mentions it in a collapsed notice."],
+  ["403: Access to unscoped api is not allowed", "Broadened the app's token scope.", "Authentication succeeded but the token was restricted to scoped APIs; the Table API is unscoped."],
+  ["incident.problem_id missing from responses", "Root cause falls back from the linked problem to the subcategory, then the close code.", "A field-level access control hides the field from the integration user. Adding a read role would expose it; that is a deliberate, reviewable choice (risk register R12)."],
+  ["66 of 67 demo incidents had no business service", "Placed under 'Unassigned service' and counted in the manifest.", "A genuine real-world finding: service attribution is often missing, which limits service-level reporting until it is fixed at source."],
+  ["Too little history for analytics", "Seeded a year of realistic history with `seed_incidents.js`.", "Developer instances ship with a few dozen old records - not enough for trends or the risk model."],
+]));
+add(H2("Bottom boxes"));
+add(blocks([
+  ["Seed tools (tools/servicenow/)", "`seed_incidents.js` (about 1,400 incidents over 12 months on the instance's own services, CIs, groups and users, with a planted VPN problem, a September mail TLS spike and a Black Friday Retail POS peak), `link_problems.js` (problem records and links), `remove_seed.js` (dry run by default). Run as admin in *Scripts - Background*.", "Every record is tagged `correlation_id = opsintel_seed`, so the demo data is fully removable. Business rules are skipped so no notifications or SLAs fire and historical dates are kept."],
+  ["Live result", "1,474 incidents synced with 0 rejects and 0 foreign-key violations. Network breach rate 11.1% → 34.4% from Q2 to Q3 2026, driven by VPN (1 → 29 breaches); email incidents 14 → 95 from August to September. Gaps: 181 incidents without a service, 242 without a company. Cost and downtime questions answered as 'not available from this source'.", "Shows the integration and the analytics work end to end on a real platform. It is not evidence about real operational performance: the data is demo plus seeded history."],
+]));
+
 // ================================================================ Glossary
 add(H1("Glossary"));
 add(table(["Term", "Meaning in this project"], [
@@ -486,6 +526,8 @@ add(table(["Term", "Meaning in this project"], [
   ["CTE", "Common table expression - the `WITH name AS (...)` part of a SQL query."],
   ["DPIA", "Data protection impact assessment (UK GDPR)."],
   ["Evidence (E#)", "A numbered tool result the answer must cite; viewable in the UI with its data and SQL."],
+  ["Client credentials (OAuth)", "A machine-to-machine OAuth flow: an application exchanges its id and secret for an access token, with no user password."],
+  ["Field ACL", "A ServiceNow access-control rule on a single field; it can hide that field from some users even when the table is readable."],
   ["Grounding", "Whether each figure in an answer can be traced to a number in the evidence."],
   ["Indirect prompt injection", "Instructions hidden in data the AI reads (documents, ticket text) that try to change its behaviour."],
   ["Isolation Forest", "An anomaly-detection algorithm that isolates unusual points with fewer random splits."],
@@ -495,6 +537,7 @@ add(table(["Term", "Meaning in this project"], [
   ["RAG", "Retrieval-augmented generation: giving the model retrieved documents to answer from."],
   ["RLS", "Row-level security in PostgreSQL."],
   ["Segregation of duties", "The person who proposes an action cannot approve it."],
+  ["Table API", "ServiceNow's REST interface for reading and writing records in any table (`/api/now/table/{table}`)."],
   ["SLA breach rate", "Share of incidents (with a known outcome) that exceeded their priority's resolution target."],
 ], [2.2, 6.8]));
 

@@ -1,6 +1,6 @@
-# Interview demo script (about 8 minutes)
+# Interview demo script (about 9 minutes)
 
-**Setup:** `make setup && make ui` (and `make api` in a second terminal). Optionally export `ANTHROPIC_API_KEY` to show the Claude engine; the demo also works on the rules engine.
+**Setup:** `make setup && make ui` (and `make api` in a second terminal). For step 10, run `make sn-sync` beforehand and `make sn-ui` in another terminal. Optionally export `ANTHROPIC_API_KEY` to show the Claude engine; the demo also works on the rules engine.
 
 | # | Time | Do | Say |
 |---|---|---|---|
@@ -13,8 +13,10 @@
 | 7 | 6:00 | Ask as Sam: *List the contact email addresses for all our customers.* Then *Is there any supplier maintenance planned on the SBC platform?* | "Personal data is blocked by the database engine, not by asking the model nicely. The vendor bulletin contains a prompt injection. It's stripped before the model sees it, and the legitimate notice survives." |
 | 8 | 7:00 | Data quality, then Audit log as *Jordan (audit)* | "Before/after quality, quarantined records with reasons, lineage with source hashes. Every question, tool call and approval is hash-chained." |
 | 9 | 7:30 | Open `docs/evaluation_report.md` | "Targets were set before testing. Same 28 questions, three conditions. Claude with tools got every factual question right; the same model without data got none, and stated numbers it couldn't have known. The grounding check also caught Claude doing arithmetic in its head, which is my next fix." |
+| 10 | 8:30 | Switch to http://localhost:8502 (ServiceNow data) | "Same platform on a live ServiceNow instance through the Table API: OAuth with a read-only integration user, landed into the same pipeline, so the same validation and lineage apply. It found the VPN problem in the incident history, and it flags real gaps: about one in eight incidents has no business service. Costs and downtime say 'not available from this source' instead of guessing." |
 
 **Likely questions**
 - *Why not just give the LLM SQL access?* It can use guarded SQL, but curated tools give tested, defined metrics, and the database engine enforces permissions either way.
-- *How would this connect to our ServiceNow?* Through the Table API, incrementally by `sys_updated_on`. The connector contract is in `etl/connectors.py`.
+- *How would this connect to our ServiceNow?* It already does: `etl/servicenow.py` reads the Table API with OAuth 2.0 client credentials as a read-only integration user, and lands the data into the same pipeline. For production you'd add an incremental schedule on `sys_updated_on` and a REST API access policy limited to the tables it reads.
+- *What did you learn connecting to a real instance?* Basic auth is blocked by default on recent releases, the client-credentials grant needs a system property, token scope has to allow the Table API, and field-level ACLs can hide fields such as `problem_id`. All four are documented in `architecture.md` §4a.
 - *What would you do in the first month?* Discovery and the DPIA (`docs/requirements.md` §7), then re-baseline data quality on real extracts.

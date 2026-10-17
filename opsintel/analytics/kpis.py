@@ -45,10 +45,12 @@ def resolve_period(period: str | None) -> tuple[str, str]:
         return "month", snap.strftime("%Y-%m")
     if p in ("previous_month", "prior_month"):
         return "month", _shift_month(snap.strftime("%Y-%m"), -1)
-    if p in ("last_quarter", "latest_quarter", "this_quarter", "current_quarter"):
+    if p in ("this_quarter", "current_quarter"):
         return "quarter", _quarter(snap)
+    if p in ("last_quarter", "latest_quarter"):
+        return "quarter", last_complete_quarter()
     if p in ("previous_quarter", "prior_quarter"):
-        return "quarter", _shift_quarter(_quarter(snap), -1)
+        return "quarter", _shift_quarter(last_complete_quarter(), -1)
     m = re.fullmatch(r"(\d{4})[-_]?q([1-4])", p)
     if m:
         return "quarter", f"{m.group(1)}Q{m.group(2)}"
@@ -68,9 +70,19 @@ def _period_col(kind: str) -> str:
     return "opened_quarter" if kind == "quarter" else "opened_month"
 
 
+def last_complete_quarter() -> str:
+    """'Last quarter' = the latest quarter fully covered by the data. If the snapshot falls
+    mid-quarter (e.g. a live extract on 17 Oct), that is the quarter before."""
+    snap = config.SNAPSHOT_DATE
+    q = _quarter(snap)
+    quarter_end = (pd.Period(q, freq="Q").end_time.normalize()).date()
+    return q if snap >= quarter_end else _shift_quarter(q, -1)
+
+
 def data_coverage() -> dict:
     return {"first_date": config.DATA_START.isoformat(), "snapshot_date": config.SNAPSHOT_DATE.isoformat(),
-            "first_quarter": _quarter(config.DATA_START), "last_quarter": _quarter(config.SNAPSHOT_DATE)}
+            "first_quarter": _quarter(config.DATA_START), "last_quarter": last_complete_quarter(),
+            "current_quarter": _quarter(config.SNAPSHOT_DATE)}
 
 
 def _check_coverage(kind: str, value: str):

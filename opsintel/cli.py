@@ -42,6 +42,13 @@ def data_dictionary():
             for c in cols:
                 meta = cat.get(c[1])
                 lines.append(f"| {c[1]} | {c[2] or ''} | {meta[2] if meta else ''} | {'yes' if meta and meta[3] else ''} | {meta[4] if meta else ''} |")
+    from opsintel.etl.servicenow import FIELD_MAP
+
+    lines += ["", "## ServiceNow source mapping", "",
+              "When the platform is loaded from a ServiceNow instance (`make sn-sync`), the tables above are filled as follows. "
+              "The same validation, entity matching, quarantine and lineage apply.", "",
+              "| Platform field | ServiceNow source | Rule |", "|---|---|---|"]
+    lines += [f"| `{t}` | `{src}` | {rule} |" for t, src, rule in FIELD_MAP]
     (config.ROOT / "docs" / "data_dictionary.md").write_text("\n".join(lines) + "\n")
     print("Wrote docs/data_dictionary.md")
 

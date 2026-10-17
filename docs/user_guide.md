@@ -13,6 +13,17 @@ Open the dashboard (`make ui`, then http://localhost:8501). Pick your demo ident
 | **Data quality & lineage** | Source quality before and after processing; quarantined records; lineage of every table; metric definitions |
 | **Audit log** | Every question, tool call and decision, hash-chained (auditors and executives only) |
 
+### Using live ServiceNow data
+
+Two dashboards can run at the same time:
+
+| Dashboard | Start it with | Address | Data |
+|---|---|---|---|
+| Synthetic | `make ui` | http://localhost:8501 | Fictional company with planted signals (default) |
+| ServiceNow | `make sn-ui` | http://localhost:8502 | Last `make sn-sync` extract from the connected instance |
+
+The ServiceNow dashboard shows *Data source: servicenow* and the date range under the title. Run `make sn-sync` to refresh the data, then restart the dashboard, because the sync rebuilds its database. A standard instance has no finance, monitoring or outage data, so cost tiles are hidden and questions about costs or downtime get a clear "not available from this source" answer. The risk forecast needs several months of incident history and says so when there isn't enough. Credentials live in the project's `.env` file. Set them up once with the platform owner, as described in the README, and never share them in chat or email.
+
 ## 2. Reading an answer
 
 - **Evidence tags** like `[E2]` point to the evidence panel under the answer. Open it to see the exact rows and SQL.

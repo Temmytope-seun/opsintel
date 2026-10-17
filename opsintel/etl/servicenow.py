@@ -49,16 +49,7 @@ class ServiceNowError(RuntimeError):
 
 
 def load_dotenv(path: Path | None = None) -> None:
-    """Minimal .env reader (KEY=VALUE lines). Existing environment variables win."""
-    path = path or (config.ROOT / ".env")
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    config.load_dotenv(path)
 
 
 @dataclass
@@ -178,6 +169,31 @@ def d(row: dict, f: str) -> str:
 
 
 # --------------------------------------------------------------------------- extraction
+
+# Documentation of the mapping (rendered into docs/data_dictionary.md by `python -m opsintel.cli docs`).
+FIELD_MAP = [
+    # (platform table.column, ServiceNow source, rule)
+    ("incidents.incident_id", "incident.number", "as is"),
+    ("incidents.opened_at / resolved_at", "incident.opened_at / resolved_at (else closed_at)", "UTC 'YYYY-MM-DD HH:MM:SS'"),
+    ("incidents.status", "incident.state (display)", "as is"),
+    ("incidents.priority", "incident.priority 1-5", "1-4 -> P1-P4; 5 (Planning) -> P4; missing -> impact x urgency matrix"),
+    ("incidents.impact / urgency", "incident.impact / urgency", "as is (1-3)"),
+    ("incidents.service_id", "incident.business_service", "entity-matched to services; empty -> 'Unassigned service'"),
+    ("incidents.customer_id", "incident.company", "empty or unknown -> 'Internal / unspecified'"),
+    ("incidents.asset_id", "incident.cmdb_ci", "only CIs referenced by incidents are extracted"),
+    ("incidents.category", "incident.category (display)", "carried through (Network, Software, ...)"),
+    ("incidents.root_cause", "incident.problem_id -> subcategory -> close_code", "first available; problem link needs a role that can read it"),
+    ("incidents.assignment_group", "incident.assignment_group (display)", "as is"),
+    ("incidents.reopened", "incident.reopen_count", "> 0"),
+    ("incidents.caused_outage / outage_minutes", "(not in a standard instance)", "0 - recorded as a mapping gap"),
+    ("service_requests.*", "sc_req_item", "due_at from due_date -> estimated_delivery -> opened + default target days"),
+    ("services.*", "cmdb_ci_service", "category = service_classification; tier = busines_criticality; owner = support_group"),
+    ("customers.*", "core_company", "no contact details are extracted"),
+    ("assets.*", "cmdb_ci (referenced CIs)", "service = most frequent business service on that CI's incidents"),
+    ("business_units.*", "business_unit", "optional; missing -> 'Unassigned business unit'"),
+    ("sla_policies.*", "(platform policy P1-P4)", "ServiceNow task_sla is not used; targets from POL-SLA-001"),
+    ("costs, alerts", "(not in a standard instance)", "skipped; features that need them say so"),
+]
 
 INCIDENT_FIELDS = ["sys_id", "number", "opened_at", "resolved_at", "closed_at", "state", "priority", "impact", "urgency",
                    "business_service", "company", "cmdb_ci", "category", "subcategory", "problem_id", "assignment_group", "close_code",
