@@ -46,13 +46,13 @@ def _bad(e: Exception):
     raise HTTPException(400, str(e))
 
 
-@app.get("/health")
+@app.get("/health", summary="Service health, last ETL run and data coverage")
 def health(con=Depends(conn)):
     run = con.execute("SELECT run_id, finished_at, status FROM etl_runs ORDER BY started_at DESC LIMIT 1").fetchone()
     return {"status": "ok", "last_etl_run": dict(run) if run else None, "coverage": kpis.data_coverage()}
 
 
-@app.get("/kpis/headline")
+@app.get("/kpis/headline", summary="Headline KPIs for the latest month vs the previous month")
 def headline(user: User = Depends(current_user)):
     out = kpis.headline_kpis()
     if "costs" not in user.role.tables:
@@ -60,7 +60,7 @@ def headline(user: User = Depends(current_user)):
     return out
 
 
-@app.get("/kpis/sla-breach-rate")
+@app.get("/kpis/sla-breach-rate", summary="SLA breach rate for a period, grouped, vs the previous period")
 def sla(period: str = "last_quarter", group_by: Literal["category", "service", "priority", "business_unit", "assignment_group"] = "category",
         user: User = Depends(current_user)):
     try:
@@ -69,7 +69,7 @@ def sla(period: str = "last_quarter", group_by: Literal["category", "service", "
         _bad(e)
 
 
-@app.get("/kpis/root-causes")
+@app.get("/kpis/root-causes", summary="Root-cause breakdown for a period with change vs the previous period")
 def root_causes(period: str = "last_quarter", category: str | None = None, rank_by: Literal["incidents", "outage_minutes", "breaches"] = "incidents",
                 user: User = Depends(current_user)):
     try:
@@ -78,12 +78,12 @@ def root_causes(period: str = "last_quarter", category: str | None = None, rank_
         _bad(e)
 
 
-@app.get("/kpis/downtime")
+@app.get("/kpis/downtime", summary="Recurring causes of customer-facing downtime")
 def downtime(months: int = Query(6, ge=1, le=18), user: User = Depends(current_user)):
     return kpis.downtime_causes(months)
 
 
-@app.get("/kpis/cost-change")
+@app.get("/kpis/cost-change", summary="Operating cost change vs the previous month, with drivers")
 def cost_change(month: str = "this_month", group_by: Literal["service_cost_type", "service", "cost_type", "business_unit"] = "service_cost_type",
                 user: User = Depends(current_user)):
     _need_costs(user)
@@ -93,22 +93,22 @@ def cost_change(month: str = "this_month", group_by: Literal["service_cost_type"
         _bad(e)
 
 
-@app.get("/kpis/improvement-priorities")
+@app.get("/kpis/improvement-priorities", summary="Process areas ranked by customer impact")
 def improvement(period: str = "last_quarter", user: User = Depends(current_user)):
     return kpis.improvement_priorities(period)
 
 
-@app.get("/risk/sla-next-week")
+@app.get("/risk/sla-next-week", summary="Probability each service misses 90% SLA compliance next week")
 def sla_risk(user: User = Depends(current_user)):
     return risk.sla_risk_next_week()
 
 
-@app.get("/risk/delivery")
+@app.get("/risk/delivery", summary="Open service requests ranked by risk of missing their due date")
 def delivery_risk(limit: int = Query(15, ge=1, le=100), user: User = Depends(current_user)):
     return risk.delivery_delay_risk(limit)
 
 
-@app.get("/anomalies/{kind}")
+@app.get("/anomalies/{kind}", summary="Recent operational or cost anomalies")
 def anomalies(kind: Literal["operational", "cost"], user: User = Depends(current_user)):
     if kind == "cost":
         _need_costs(user)
@@ -121,7 +121,7 @@ class AskBody(BaseModel):
     engine: Literal["auto", "claude", "rules"] = "auto"
 
 
-@app.post("/ask")
+@app.post("/ask", summary="Ask the assistant a question; returns the answer with evidence and grounding")
 def ask_endpoint(body: AskBody, user: User = Depends(current_user)):
     a = ask(body.question, user.user_id, engine=body.engine)
     return {"answer": a.answer, "engine": a.engine, "abstained": a.abstained, "grounding": a.grounding,
@@ -159,32 +159,32 @@ def _act(fn, *a, **k):
         raise HTTPException(409, str(e))
 
 
-@app.get("/actions")
+@app.get("/actions", summary="List actions, optionally filtered by status")
 def list_actions(status: str | None = None, user: User = Depends(current_user), con=Depends(conn)):
     return actions.list_actions(con, status)
 
 
-@app.post("/actions", status_code=201)
+@app.post("/actions", summary="Propose an action with supporting evidence", status_code=201)
 def propose(body: ProposeBody, user: User = Depends(current_user), con=Depends(conn)):
     return _act(actions.propose, con, user, body.title, body.rationale, body.evidence, body.priority, body.service_id, body.owner_group)
 
 
-@app.post("/actions/{action_id}/approve")
+@app.post("/actions/{action_id}/approve", summary="Approve a proposed action")
 def approve(action_id: str, body: DecisionBody, user: User = Depends(current_user), con=Depends(conn)):
     return _act(actions.decide, con, user, action_id, True, body.note)
 
 
-@app.post("/actions/{action_id}/reject")
+@app.post("/actions/{action_id}/reject", summary="Reject a proposed action")
 def reject(action_id: str, body: DecisionBody, user: User = Depends(current_user), con=Depends(conn)):
     return _act(actions.decide, con, user, action_id, False, body.note)
 
 
-@app.post("/actions/{action_id}/progress")
+@app.post("/actions/{action_id}/progress", summary="Move an approved action to in progress or done")
 def progress(action_id: str, body: ProgressBody, user: User = Depends(current_user), con=Depends(conn)):
     return _act(actions.update_progress, con, user, action_id, body.status, body.outcome)
 
 
-@app.get("/audit")
+@app.get("/audit", summary="Most recent audit-log entries")
 def audit_log(limit: int = Query(100, ge=1, le=1000), user: User = Depends(current_user), con=Depends(conn)):
     if not user.role.can_view_audit:
         raise HTTPException(403, "audit log is restricted to auditors and executives")
@@ -192,7 +192,7 @@ def audit_log(limit: int = Query(100, ge=1, le=1000), user: User = Depends(curre
     return [dict(r) | {"detail": json.loads(r["detail"])} for r in rows]
 
 
-@app.get("/audit/verify")
+@app.get("/audit/verify", summary="Verify the audit log's hash chain")
 def audit_verify(user: User = Depends(current_user), con=Depends(conn)):
     if not user.role.can_view_audit:
         raise HTTPException(403, "audit log is restricted to auditors and executives")
@@ -200,7 +200,7 @@ def audit_verify(user: User = Depends(current_user), con=Depends(conn)):
     return {"chain_intact": ok, "first_bad_seq": bad}
 
 
-@app.get("/data-quality")
+@app.get("/data-quality", summary="Data-quality metrics and rejects from the latest ETL run")
 def data_quality(user: User = Depends(current_user), con=Depends(conn)):
     run = con.execute("SELECT run_id FROM etl_runs WHERE status='succeeded' ORDER BY started_at DESC LIMIT 1").fetchone()
     if not run:
@@ -210,14 +210,14 @@ def data_quality(user: User = Depends(current_user), con=Depends(conn)):
     return {"run_id": run[0], "metrics": [dict(r) for r in rows], "rejects": [dict(r) for r in rejects]}
 
 
-@app.get("/lineage")
+@app.get("/lineage", summary="Lineage of every table from the latest ETL run")
 def lineage(user: User = Depends(current_user), con=Depends(conn)):
     rows = con.execute("SELECT l.* FROM lineage l JOIN etl_runs r USING (run_id) WHERE r.status='succeeded' "
                        "AND r.run_id = (SELECT run_id FROM etl_runs WHERE status='succeeded' ORDER BY started_at DESC LIMIT 1)").fetchall()
     return [dict(r) | {"transforms": json.loads(r["transforms"])} for r in rows]
 
 
-@app.get("/catalog")
+@app.get("/catalog", summary="Metadata catalogue and metric definitions")
 def catalog(user: User = Depends(current_user), con=Depends(conn)):
     return {"metric_definitions": db.METRIC_DEFINITIONS,
             "columns": [dict(r) for r in con.execute("SELECT * FROM catalog ORDER BY table_name, column_name")]}

@@ -91,7 +91,7 @@ This is the kind of inventory to confirm with the partner company during discove
 | Source | Typical system | Interface used here | Defects handled |
 |---|---|---|---|
 | CMDB (services, assets, customers, SLA definitions) | ServiceNow CMDB / Halo / Autotask | Read-only SQL extract | Primary-key duplicates |
-| Incident and request records (live) | ServiceNow | Table API, OAuth 2.0 client credentials, paged GET | Missing business service / company, missing due dates, hidden fields (field ACLs), demo records spanning years |
+| Incident and request records (live) | ServiceNow | Table API, OAuth 2.0 client credentials, paged GET | Missing business service / company, missing due dates, no incident-to-problem field in this release, demo records spanning years |
 | Incident and request records | ServiceNow / Halo ITSM | Scheduled CSV export | Duplicates, stale versions, mixed date formats, free-text service names and typos, missing priority, test tickets, impossible timestamps, orphan customers |
 | Finance ledger | Xero / Sage / Dynamics | Monthly CSV export | Currency strings, inconsistent month format, re-export duplicates |
 | Monitoring | PRTG / LogicMonitor / Zabbix | Paginated REST API | At-least-once duplicate events, inconsistent severity case, asset-only references |
@@ -183,6 +183,7 @@ The MVP uses SQLite so it runs anywhere with no services. For a multi-user pilot
 
 - **SQLite → PostgreSQL**: zero-setup reproducibility for reviewers; the SQL is portable, and the read-only enforcement concept carries over to database roles.
 - **TF-IDF retrieval**: the corpus is small, procedural and vocabulary-rich, and results are deterministic, so evaluation runs are repeatable. The interface is the same as an embedding retriever's, so it can be replaced later.
+- **Analytics methods** (KPI definitions, Isolation Forest, robust z-scores, risk model features and evaluation) are described in full in [analytics.md](analytics.md).
 - **Logistic regression for risk**: explainable per-feature contributions, calibrated-enough probabilities, and bootstrap intervals. It is honest about modest performance, and every prediction can be explained to a service owner.
 - **Direct Anthropic SDK tool calling**, not a framework: the loop is about 40 lines and every step is visible and testable (see `tests/test_assistant.py`, which drives it with a scripted client).
 - **Two engines**: the deterministic engine keeps the platform useful without an API key or during an LLM outage, and it is the *analytics-only* condition in the research design.

@@ -74,7 +74,7 @@ flowchart LR
 | 3 | Synthetic data patterns resemble reality | Treat all results as method validation, then re-run the evaluation on a pilot extract |
 | 4 | Users will trust AI recommendations | Evidence panel, abstention, human approval and training. Measure trust in the pilot |
 | 5 | LLM cost and latency are acceptable | Measure tokens per question (the harness records usage); caching; rules engine for routine KPIs |
-| 6 | The ITSM instance exposes the fields we need to an integration account | Confirmed on a developer instance: basic auth blocked by default (OAuth required), and some fields (e.g. `problem_id`) hidden by field ACLs. Agree roles and the OAuth app with the platform owner early |
+| 6 | The ITSM instance exposes the fields we need to an integration account | Confirmed on a developer instance: basic auth blocked by default (OAuth required), and field names differ by release (no `incident.problem_id` here). Check the dictionary, then agree roles and the OAuth app with the platform owner early |
 
 ## 7. Discovery questions for the partner company
 

@@ -282,7 +282,7 @@
         inc.setValue('sys_created_by', 'opsintel_seed');
         inc.setValue('sys_updated_by', 'opsintel_seed');
         inc.setValue('correlation_id', TAG);
-        if (opts.problem) inc.setValue('problem_id', opts.problem);
+        if (opts.problem && inc.isValidField('problem_id')) inc.setValue('problem_id', opts.problem);  // field absent on some releases
         if (rnd() < 0.03) inc.setValue('reopen_count', 1);
 
         var state;

@@ -62,7 +62,7 @@ _Generated from the metadata catalogue (`opsintel/db.py`) by `python -m opsintel
 
 ## audit_log
 
-23 rows
+36 rows
 
 | Column | Type | Description | PII | Source |
 |---|---|---|---|---|
@@ -332,7 +332,7 @@ When the platform is loaded from a ServiceNow instance (`make sn-sync`), the tab
 | `incidents.customer_id` | `incident.company` | empty or unknown -> 'Internal / unspecified' |
 | `incidents.asset_id` | `incident.cmdb_ci` | only CIs referenced by incidents are extracted |
 | `incidents.category` | `incident.category (display)` | carried through (Network, Software, ...) |
-| `incidents.root_cause` | `incident.problem_id -> subcategory -> close_code` | first available; problem link needs a role that can read it |
+| `incidents.root_cause` | `incident.problem_id -> subcategory -> close_code` | first available; problem_id only exists on some releases (not Australia) |
 | `incidents.assignment_group` | `incident.assignment_group (display)` | as is |
 | `incidents.reopened` | `incident.reopen_count` | > 0 |
 | `incidents.caused_outage / outage_minutes` | `(not in a standard instance)` | 0 - recorded as a mapping gap |

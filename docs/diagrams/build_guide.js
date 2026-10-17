@@ -505,13 +505,13 @@ add(decision([
   ["Basic auth refused (401) - even for admin", "Added OAuth 2.0 client-credentials support to the connector; basic auth kept for instances that allow it.", "Recent releases block password authentication on REST APIs by default, so a ServiceNow integration should plan for OAuth from day one."],
   ["Token request: access_denied", "Created the client-credentials system property.", "The grant type is disabled until that property exists; the console only mentions it in a collapsed notice."],
   ["403: Access to unscoped api is not allowed", "Broadened the app's token scope.", "Authentication succeeded but the token was restricted to scoped APIs; the Table API is unscoped."],
-  ["incident.problem_id missing from responses", "Root cause falls back from the linked problem to the subcategory, then the close code.", "A field-level access control hides the field from the integration user. Adding a read role would expose it; that is a deliberate, reviewable choice (risk register R12)."],
+  ["incident.problem_id missing from responses", "Root cause falls back from the linked problem to the subcategory, then the close code.", "This release's incident table has no `problem_id` field - verified in the dictionary after an extra read role made no difference. Field names change between releases, so check the dictionary before adding roles."],
   ["66 of 67 demo incidents had no business service", "Placed under 'Unassigned service' and counted in the manifest.", "A genuine real-world finding: service attribution is often missing, which limits service-level reporting until it is fixed at source."],
   ["Too little history for analytics", "Seeded a year of realistic history with `seed_incidents.js`.", "Developer instances ship with a few dozen old records - not enough for trends or the risk model."],
 ]));
 add(H2("Bottom boxes"));
 add(blocks([
-  ["Seed tools (tools/servicenow/)", "`seed_incidents.js` (about 1,400 incidents over 12 months on the instance's own services, CIs, groups and users, with a planted VPN problem, a September mail TLS spike and a Black Friday Retail POS peak), `link_problems.js` (problem records and links), `remove_seed.js` (dry run by default). Run as admin in *Scripts - Background*.", "Every record is tagged `correlation_id = opsintel_seed`, so the demo data is fully removable. Business rules are skipped so no notifications or SLAs fire and historical dates are kept."],
+  ["Seed tools (tools/servicenow/)", "`seed_incidents.js` (about 1,400 incidents over 12 months on the instance's own services, CIs, groups and users, with a planted VPN problem, a September mail TLS spike and a Black Friday Retail POS peak), `link_problems.js` (problem records; links only on releases that have `incident.problem_id`), `remove_seed.js` (dry run by default). Run as admin in *Scripts - Background*.", "Every record is tagged `correlation_id = opsintel_seed`, so the demo data is fully removable. Business rules are skipped so no notifications or SLAs fire and historical dates are kept."],
   ["Live result", "1,474 incidents synced with 0 rejects and 0 foreign-key violations. Network breach rate 11.1% → 34.4% from Q2 to Q3 2026, driven by VPN (1 → 29 breaches); email incidents 14 → 95 from August to September. Gaps: 181 incidents without a service, 242 without a company. Cost and downtime questions answered as 'not available from this source'.", "Shows the integration and the analytics work end to end on a real platform. It is not evidence about real operational performance: the data is demo plus seeded history."],
 ]));
 
@@ -527,7 +527,6 @@ add(table(["Term", "Meaning in this project"], [
   ["DPIA", "Data protection impact assessment (UK GDPR)."],
   ["Evidence (E#)", "A numbered tool result the answer must cite; viewable in the UI with its data and SQL."],
   ["Client credentials (OAuth)", "A machine-to-machine OAuth flow: an application exchanges its id and secret for an access token, with no user password."],
-  ["Field ACL", "A ServiceNow access-control rule on a single field; it can hide that field from some users even when the table is readable."],
   ["Grounding", "Whether each figure in an answer can be traced to a number in the evidence."],
   ["Indirect prompt injection", "Instructions hidden in data the AI reads (documents, ticket text) that try to change its behaviour."],
   ["Isolation Forest", "An anomaly-detection algorithm that isolates unusual points with fewer random splits."],

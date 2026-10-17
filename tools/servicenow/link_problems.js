@@ -1,7 +1,8 @@
 /*
  * OpsIntel - follow-up to seed_incidents.js for instances where problem creation was refused
- * by data policies: creates the two planted problem records and links the matching seeded
- * incidents to them. Idempotent (skips if seeded problems already exist).
+ * by data policies: creates the two planted problem records and, on releases whose incident
+ * table has a problem_id field, links the matching seeded incidents to them. (The Australia
+ * release has no incident.problem_id, so the link step reports that and does nothing.) Idempotent (skips if seeded problems already exist).
  * Run in: System Definition > Scripts - Background (scope: global), as admin.
  */
 (function linkOpsIntelProblems() {
@@ -45,6 +46,7 @@
     }
     function link(problemId, encodedQuery, note) {
         var n = 0, inc = new GlideRecord('incident');
+        if (!inc.isValidField('problem_id')) { gs.print('incident.problem_id does not exist on this release - incidents not linked.'); return 0; }
         inc.addEncodedQuery('correlation_id=' + TAG + '^' + encodedQuery);
         inc.query();
         while (inc.next()) {

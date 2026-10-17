@@ -1,0 +1,3 @@
+-r requirements.txt
+# Screenshots and demo recording (tools/capture_screenshots.py, tools/record_demo.py) - not needed at runtime
+playwright==1.55.0

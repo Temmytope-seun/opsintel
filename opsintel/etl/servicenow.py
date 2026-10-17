@@ -182,7 +182,7 @@ FIELD_MAP = [
     ("incidents.customer_id", "incident.company", "empty or unknown -> 'Internal / unspecified'"),
     ("incidents.asset_id", "incident.cmdb_ci", "only CIs referenced by incidents are extracted"),
     ("incidents.category", "incident.category (display)", "carried through (Network, Software, ...)"),
-    ("incidents.root_cause", "incident.problem_id -> subcategory -> close_code", "first available; problem link needs a role that can read it"),
+    ("incidents.root_cause", "incident.problem_id -> subcategory -> close_code", "first available; problem_id only exists on some releases (not Australia)"),
     ("incidents.assignment_group", "incident.assignment_group (display)", "as is"),
     ("incidents.reopened", "incident.reopen_count", "> 0"),
     ("incidents.caused_outage / outage_minutes", "(not in a standard instance)", "0 - recorded as a mapping gap"),
@@ -328,7 +328,8 @@ def land(raw: dict, out_dir: Path, instance: str) -> dict:
                 gaps["incidents_without_company"] += 1
                 comp = INTERNAL_CUSTOMER[0]
             close = d(r, "close_code")
-            # Root cause: the linked problem says *why*; subcategory is the next-best signal;
+            # Root cause: the linked problem says *why* (where the release has incident.problem_id);
+            # subcategory is the next-best signal;
             # the close code (how the ticket was closed) is the last resort.
             cause = d(r, "problem_id") or (f"{d(r, 'category')} / {d(r, 'subcategory')}" if d(r, "subcategory") else "")
             gaps["incidents_without_close_code"] += 0 if close or not v(r, "resolved_at") else 1

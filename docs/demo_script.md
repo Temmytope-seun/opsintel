@@ -18,5 +18,5 @@
 **Likely questions**
 - *Why not just give the LLM SQL access?* It can use guarded SQL, but curated tools give tested, defined metrics, and the database engine enforces permissions either way.
 - *How would this connect to our ServiceNow?* It already does: `etl/servicenow.py` reads the Table API with OAuth 2.0 client credentials as a read-only integration user, and lands the data into the same pipeline. For production you'd add an incremental schedule on `sys_updated_on` and a REST API access policy limited to the tables it reads.
-- *What did you learn connecting to a real instance?* Basic auth is blocked by default on recent releases, the client-credentials grant needs a system property, token scope has to allow the Table API, and field-level ACLs can hide fields such as `problem_id`. All four are documented in `architecture.md` §4a.
+- *What did you learn connecting to a real instance?* Basic auth is blocked by default on recent releases, the client-credentials grant needs a system property, token scope has to allow the Table API, and this release has no incident-to-problem field, so you can't assume older field names exist - check the dictionary. All four are documented in `architecture.md` §4a.
 - *What would you do in the first month?* Discovery and the DPIA (`docs/requirements.md` §7), then re-baseline data quality on real extracts.

@@ -642,7 +642,7 @@ def p_servicenow():
         ("Basic auth refused (401) - even for admin", "REST API blocks password auth by default → connector supports OAuth client credentials"),
         ("Token request: access_denied", "Client-credentials grant is off until the system property is created"),
         ("403: Access to unscoped api is not allowed", "Token scope excluded the Table API → broaden scope or add a REST API access policy"),
-        ("incident.problem_id missing from responses", "Field ACL hides it from the integration user → root cause falls back to subcategory"),
+        ("incident.problem_id missing from responses", "Field does not exist in this release (checked the dictionary) → root cause falls back to subcategory"),
         ("66 of 67 demo incidents had no business service", "Real-world gap; quarantined/placeholder and counted in the manifest"),
         ("Too little history for analytics", "seed_incidents.js adds a year of realistic, tagged history (removable)"),
     ]
@@ -653,7 +653,7 @@ def p_servicenow():
         p.edge(a, b)
     # bottom: results + seed tools
     p.box(30, 640, 470, 210, "Seed tools (tools/servicenow/)<br>seed_incidents.js - ~1,400 incidents over 12 months on the instance's own services, CIs, groups, users; "
-          "planted VPN problem (Jul→), mail TLS spike (Sep), Retail POS peak (Black Friday)<br>link_problems.js - problem records + links<br>"
+          "planted VPN problem (Jul→), mail TLS spike (Sep), Retail POS peak (Black Friday)<br>link_problems.js - problem records (links only where incident.problem_id exists)<br>"
           "remove_seed.js - dry run by default<br>All tagged correlation_id = opsintel_seed · run as admin in Scripts - Background", "source", align="left", size=11)
     p.box(30, 880, 1640, 110, "Live result<br>1,474 incidents · 0 rejects · 0 FK violations · Network breach rate 11.1% → 34.4% (Q2 → Q3 2026) driven by VPN (1 → 29 breaches) · "
           "email incidents 14 → 95 (Aug → Sep) · gaps: 181 incidents without service, 242 without company · costs / downtime answered as 'not available from this source'",
