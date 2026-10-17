@@ -156,7 +156,8 @@ def load_incidents(run: Run, ref):
 
     svc = ref["services"].set_index("service_id")
     sla = ref["sla_policies"].set_index("priority").resolution_target_hrs
-    df["category"] = df.service_id.map(svc.category)
+    src_cat = df["category"].replace("", None) if "category" in df.columns else None
+    df["category"] = src_cat.fillna(df.service_id.map(svc.category)) if src_cat is not None else df.service_id.map(svc.category)
     df["sla_target_hours"] = df.priority.map(sla).astype(float)
     snap_end = pd.Timestamp(config.SNAPSHOT_DATE) + pd.Timedelta(days=1)
     df["resolution_hours"] = ((df.resolved_at - df.opened_at).dt.total_seconds() / 3600).round(3)
@@ -290,8 +291,15 @@ def run_pipeline(db_path=None) -> dict:
         ref = load_reference(run)
         load_incidents(run, ref)
         load_requests(run, ref)
-        load_alerts(run, ref)
-        load_costs(run, ref)
+        # Monitoring and finance are optional: a standard ServiceNow instance has neither.
+        if config.MONITORING_API_URL or (config.RAW_DIR / "monitoring_alerts.json").exists():
+            load_alerts(run, ref)
+        else:
+            run.report["alerts"] = {"skipped": "no monitoring source configured"}
+        if (config.RAW_DIR / "finance_costs.csv").exists():
+            load_costs(run, ref)
+        else:
+            run.report["costs"] = {"skipped": "no finance source configured"}
         from opsintel.governance.rbac import seed_users
 
         seed_users(con)

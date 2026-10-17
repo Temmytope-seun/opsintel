@@ -116,31 +116,51 @@ can_cost = "costs" in user.role.tables
 
 if page == "Overview":
     st.header("Operational performance")
+    if config.SOURCE != "synthetic":
+        st.caption(f"Data source: {config.SOURCE} · {config.DATA_START} to {config.SNAPSHOT_DATE}")
     h = kpis.headline_kpis()
-    cols = st.columns(5 if can_cost else 4)
-    cols[0].metric(f"Incidents ({h['month']})", f"{h['incidents']:,.0f}", f"{h['incidents'] - h['incidents_prev']:+,.0f} vs {h['previous_month']}", delta_color="inverse")
-    cols[1].metric("SLA breach rate", f"{h['breach_rate_pct']}%", f"{h['breach_rate_pct'] - h['breach_rate_pct_prev']:+.1f} pp", delta_color="inverse")
-    cols[2].metric("Mean time to resolve", f"{h['mttr_hours']:.1f} h", f"{h['mttr_hours'] - h['mttr_hours_prev']:+.1f} h", delta_color="inverse")
-    cols[3].metric("Downtime", f"{h['outage_minutes'] / 60:,.0f} h", f"{(h['outage_minutes'] - h['outage_minutes_prev']) / 60:+,.0f} h", delta_color="inverse")
-    if can_cost:
-        cols[4].metric("Operating cost", f"£{h['cost_gbp'] / 1000:,.1f}k", f"{'+' if h['cost_gbp'] >= h['cost_gbp_prev'] else '-'}£{abs(h['cost_gbp'] - h['cost_gbp_prev']) / 1000:,.1f}k", delta_color="inverse")
+
+    def fmt(cur, prev, f, unit="", scale=1.0):
+        if cur is None:
+            return "n/a", None
+        delta = None if prev is None else f"{(cur - prev) / scale:+{f}}{unit}"
+        return f"{cur / scale:,{f}}{unit}", delta
+
+    show_cost = can_cost and h["cost_gbp"] is not None
+    cols = st.columns(5 if show_cost else 4)
+    v, dl = fmt(h["incidents"], h["incidents_prev"], ".0f")
+    cols[0].metric(f"Incidents ({h['month']})", v, dl and f"{dl} vs {h['previous_month']}", delta_color="inverse")
+    v, dl = fmt(h["breach_rate_pct"], h["breach_rate_pct_prev"], ".1f")
+    cols[1].metric("SLA breach rate", v if v == "n/a" else v + "%", dl and dl + " pp", delta_color="inverse")
+    v, dl = fmt(h["mttr_hours"], h["mttr_hours_prev"], ".1f", " h")
+    cols[2].metric("Mean time to resolve", v, dl, delta_color="inverse")
+    v, dl = fmt(h["outage_minutes"], h["outage_minutes_prev"], ".0f", " h", 60)
+    cols[3].metric("Downtime", v, dl, delta_color="inverse")
+    if show_cost:
+        diff = None if h["cost_gbp_prev"] is None else h["cost_gbp"] - h["cost_gbp_prev"]
+        cols[4].metric("Operating cost", f"£{h['cost_gbp'] / 1000:,.1f}k",
+                       None if diff is None else f"{'+' if diff >= 0 else '-'}£{abs(diff) / 1000:,.1f}k", delta_color="inverse")
 
     c1, c2 = st.columns(2)
-    br = kpis.sla_breach_rate("last_quarter", "category")
+    try:
+        br = kpis.sla_breach_rate("last_quarter", "category")
+    except (ValueError, IndexError, KeyError) as e:
+        st.info(f"Quarterly comparison unavailable for this data: {e}")
+        st.stop()
     df = pd.DataFrame(br["data"])
     fig = go.Figure()
     fig.add_bar(y=df.category, x=df.prev_breach_rate_pct, name=br["compared_with"], orientation="h", marker_color=SERIES[0])
     fig.add_bar(y=df.category, x=df.breach_rate_pct, name=br["period"], orientation="h", marker_color=SERIES[1])
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(hovermode="y unified")
-    c1.plotly_chart(style(fig, f"SLA breach rate % by category - {br['period']} vs {br['compared_with']}", 360), use_container_width=True)
+    c1.plotly_chart(style(fig, f"SLA breach rate % by category - {br['period']} vs {br['compared_with']}", 360), width="stretch")
 
     tr = pd.DataFrame(kpis.incident_trend(None)["data"])
     fig = go.Figure()
     fig.add_scatter(x=tr.month, y=tr.breach_rate_pct, name="Breach rate %", mode="lines+markers", line_color=SERIES[0], marker=dict(size=8))
     fig.add_hline(y=10, line_dash="dot", line_color=MUTED, annotation_text="10% tolerance (POL-SLA-001)", annotation_font_color=MUTED)
     fig.update_layout(showlegend=False)
-    c2.plotly_chart(style(fig, "Monthly SLA breach rate %", 360), use_container_width=True)
+    c2.plotly_chart(style(fig, "Monthly SLA breach rate %", 360), width="stretch")
 
     c3, c4 = st.columns(2)
     rc = kpis.top_root_causes("last_quarter", rank_by="incidents")
@@ -150,28 +170,28 @@ if page == "Overview":
     fig.add_bar(y=rdf.root_cause, x=rdf.incidents, name=rc["period"], orientation="h", marker_color=SERIES[1])
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(hovermode="y unified")
-    c3.plotly_chart(style(fig, f"Incidents by root cause - {rc['period']} vs previous quarter", 380), use_container_width=True)
+    c3.plotly_chart(style(fig, f"Incidents by root cause - {rc['period']} vs previous quarter", 380), width="stretch")
 
     vol = pd.DataFrame(kpis.incident_trend("business_unit")["data"])
     fig = go.Figure()
     for i, (k, g) in enumerate(vol.groupby("grp")):
         fig.add_scatter(x=g.month, y=g.incidents, name=k, mode="lines", line_color=SERIES[i])
-    c4.plotly_chart(style(fig, "Monthly incidents by business unit", 380), use_container_width=True)
+    c4.plotly_chart(style(fig, "Monthly incidents by business unit", 380), width="stretch")
 
-    if can_cost:
+    if show_cost:
         ct = pd.DataFrame(kpis.cost_trend("business_unit")["data"])
         fig = go.Figure()
         for i, (k, g) in enumerate(ct.groupby("business_unit")):
             fig.add_bar(x=g.month, y=g.amount_gbp, name=k, marker_color=SERIES[i], marker_line_color="white", marker_line_width=2)
         fig.update_layout(barmode="stack")
-        st.plotly_chart(style(fig, "Monthly operating cost by business unit (GBP)", 380), use_container_width=True)
+        st.plotly_chart(style(fig, "Monthly operating cost by business unit (GBP)", 380), width="stretch")
 
     st.subheader("Emerging risks")
     a = anomaly.operational_anomalies()
     st.write(a["summary"])
     if a["data"]:
         st.dataframe(pd.DataFrame(a["data"])[["day", "service", "main_signal", "signal_value", "z_score", "anomaly_score"]],
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------- assistant
 
@@ -184,7 +204,7 @@ elif page == "Ask OpsIntel":
     ex_cols = st.columns(2)
     picked = None
     for i, q in enumerate(EXAMPLES):
-        if ex_cols[i % 2].button(q, key=f"ex{i}", use_container_width=True):
+        if ex_cols[i % 2].button(q, key=f"ex{i}", width="stretch"):
             picked = q
     prompt = st.chat_input("Ask a question about operations, SLAs, costs, risks or procedures") or picked
     if prompt:
@@ -208,11 +228,11 @@ elif page == "Ask OpsIntel":
                         continue
                     fig = chart_from_hint(ev.result)
                     if fig:
-                        st.plotly_chart(fig, use_container_width=True, key=f"c{n}{ev.evidence_id}")
+                        st.plotly_chart(fig, width="stretch", key=f"c{n}{ev.evidence_id}")
                     data = ev.result.get("data")
                     if isinstance(data, list) and data and isinstance(data[0], dict):
                         st.dataframe(pd.DataFrame(data).astype(str) if ev.tool in ("search_knowledge", "get_document") else pd.DataFrame(data),
-                                     hide_index=True, use_container_width=True)
+                                     hide_index=True, width="stretch")
                     if ev.sql:
                         st.code(ev.sql, language="sql")
                     meta = {k: v for k, v in ev.result.items() if k not in ("data", "chart", "sql", "summary")}
@@ -237,43 +257,48 @@ elif page == "Ask OpsIntel":
 
 elif page == "Risk & anomalies":
     st.header("Predictive risk")
-    r = risk.sla_risk_next_week()
-    df = pd.DataFrame(r["data"]).sort_values("risk_pct")
-    lo = df.risk_pct - df.interval_pct.str[0]
-    hi = df.interval_pct.str[1] - df.risk_pct
-    fig = go.Figure(go.Scatter(x=df.risk_pct, y=df.service, mode="markers", marker=dict(size=11, color=SERIES[0]),
-                               error_x=dict(type="data", array=hi, arrayminus=lo, color=MUTED, thickness=2, width=0),
-                               hovertemplate="%{y}: %{x:.1f}%<extra></extra>"))
-    fig.add_vline(x=60, line_dash="dot", line_color=MUTED, annotation_text="High ≥ 60%", annotation_font_color=MUTED)
-    fig.update_xaxes(range=[0, 100], title="Probability of missing 90% SLA compliance (%)")
-    fig.update_layout(showlegend=False, hovermode="closest")
-    st.plotly_chart(style(fig, f"SLA risk for {r['forecast_week']} (dot = estimate, bar = 10th-90th percentile)", 460), use_container_width=True)
-    st.caption(r["definition"] + " " + r["model"])
-    tbl = pd.DataFrame([{"service": d["service"], "risk %": d["risk_pct"], "band": d["band"], "owner": d["owner_group"],
-                         "main drivers": "; ".join(f"{x['factor']} = {x['value']}" for x in d["top_drivers"])} for d in r["data"]])
-    st.dataframe(tbl, hide_index=True, use_container_width=True)
-    ev = r["evaluation"]
-    st.markdown("**Model evaluation (out-of-sample)**")
-    m = st.columns(4)
-    m[0].metric("Model AUC", ev["model_auc"], f"{ev['model_auc'] - ev['baseline_persistence_auc']:+.3f} vs persistence")
-    m[1].metric("Model Brier", ev["model_brier"], f"{ev['model_brier'] - ev['baseline_persistence_brier']:+.3f}", delta_color="inverse")
-    m[2].metric("Test windows", ev["test_windows"])
-    m[3].metric("Positive rate (test)", f"{100 * ev['positive_rate_test']:.0f}%")
+    try:
+        r = risk.sla_risk_next_week()
+    except risk.InsufficientData as e:
+        r = None
+        st.info(str(e))
+    if r is not None:
+        df = pd.DataFrame(r["data"]).sort_values("risk_pct")
+        lo = df.risk_pct - df.interval_pct.str[0]
+        hi = df.interval_pct.str[1] - df.risk_pct
+        fig = go.Figure(go.Scatter(x=df.risk_pct, y=df.service, mode="markers", marker=dict(size=11, color=SERIES[0]),
+                                   error_x=dict(type="data", array=hi, arrayminus=lo, color=MUTED, thickness=2, width=0),
+                                   hovertemplate="%{y}: %{x:.1f}%<extra></extra>"))
+        fig.add_vline(x=60, line_dash="dot", line_color=MUTED, annotation_text="High ≥ 60%", annotation_font_color=MUTED)
+        fig.update_xaxes(range=[0, 100], title="Probability of missing 90% SLA compliance (%)")
+        fig.update_layout(showlegend=False, hovermode="closest")
+        st.plotly_chart(style(fig, f"SLA risk for {r['forecast_week']} (dot = estimate, bar = 10th-90th percentile)", 460), width="stretch")
+        st.caption(r["definition"] + " " + r["model"])
+        tbl = pd.DataFrame([{"service": d["service"], "risk %": d["risk_pct"], "band": d["band"], "owner": d["owner_group"],
+                             "main drivers": "; ".join(f"{x['factor']} = {x['value']}" for x in d["top_drivers"])} for d in r["data"]])
+        st.dataframe(tbl, hide_index=True, width="stretch")
+        ev = r["evaluation"]
+        st.markdown("**Model evaluation (out-of-sample)**")
+        m = st.columns(4)
+        m[0].metric("Model AUC", ev["model_auc"], f"{ev['model_auc'] - ev['baseline_persistence_auc']:+.3f} vs persistence")
+        m[1].metric("Model Brier", ev["model_brier"], f"{ev['model_brier'] - ev['baseline_persistence_brier']:+.3f}", delta_color="inverse")
+        m[2].metric("Test windows", ev["test_windows"])
+        m[3].metric("Positive rate (test)", f"{100 * ev['positive_rate_test']:.0f}%")
 
     st.header("Delivery risk - open service requests")
     d = risk.delivery_delay_risk(20)
     st.caption(d["summary"] + " Method: " + d["method"])
-    st.dataframe(pd.DataFrame(d["data"]), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(d["data"]), hide_index=True, width="stretch")
 
     st.header("Anomalies")
     a = anomaly.operational_anomalies()
     st.caption(a["method"])
     if a["data"]:
-        st.dataframe(pd.DataFrame(a["data"]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(a["data"]), hide_index=True, width="stretch")
     if can_cost:
         c = anomaly.cost_anomalies()
         st.caption(c["method"])
-        st.dataframe(pd.DataFrame(c["data"]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(c["data"]), hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------- actions
 
@@ -318,7 +343,7 @@ elif page == "Actions & approvals":
                 st.error(str(e))
     st.subheader("Notification outbox")
     st.dataframe(db.query_df("SELECT created_at, channel, recipient, subject, delivered FROM notifications ORDER BY notification_id DESC LIMIT 50",
-                             con=con()), hide_index=True, use_container_width=True)
+                             con=con()), hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------- data quality
 
@@ -330,15 +355,15 @@ elif page == "Data quality & lineage":
     piv = dq.pivot_table(index=["source", "metric"], columns="stage", values="value").reset_index()
     piv = piv[piv.metric.isin(["rows", "exact_duplicate_rows", "duplicate_keys", "missing_required_cells", "schema_violations", "unmatched_references"])]
     st.subheader("Before vs after processing")
-    st.dataframe(piv[["source", "metric", "before", "after"]], hide_index=True, use_container_width=True)
+    st.dataframe(piv[["source", "metric", "before", "after"]], hide_index=True, width="stretch")
     st.subheader("Quarantined records")
     st.dataframe(db.query_df("SELECT source, reason, COUNT(*) AS records FROM etl_rejects WHERE run_id=? GROUP BY source, reason",
-                             (run["run_id"],), con()), hide_index=True, use_container_width=True)
+                             (run["run_id"],), con()), hide_index=True, width="stretch")
     st.subheader("Lineage")
     lin = db.query_df("SELECT target_table, source_name, source_type, source_uri, rows_in, rows_out, rows_rejected, transforms, source_sha256 "
                       "FROM lineage WHERE run_id=?", (run["run_id"],), con())
     lin["transforms"] = lin.transforms.map(lambda t: " → ".join(json.loads(t)))
-    st.dataframe(lin, hide_index=True, use_container_width=True)
+    st.dataframe(lin, hide_index=True, width="stretch")
     st.subheader("Metric definitions")
     st.table(pd.DataFrame(db.METRIC_DEFINITIONS.items(), columns=["metric", "definition"]))
 
@@ -352,4 +377,4 @@ elif page == "Audit log":
         ok, bad = audit.verify(con())
         (st.success if ok else st.error)("Hash chain intact - no entries altered or removed." if ok else f"Chain broken at entry {bad}.")
         log = db.query_df("SELECT seq, ts, user_id, role, event, detail, hash FROM audit_log ORDER BY seq DESC LIMIT 500", con=con())
-        st.dataframe(log, hide_index=True, use_container_width=True)
+        st.dataframe(log, hide_index=True, width="stretch")

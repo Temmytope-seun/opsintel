@@ -29,7 +29,15 @@ FEATURES = {
     "high_priority_7d": "P1/P2 incidents in the last 7 days",
 }
 SLA_COMPLIANCE_TARGET = 0.90   # a service "misses SLA" in a week if <90% of incidents meet target
-TRAIN_END = pd.Timestamp("2026-04-01")
+TEST_WEEKS = 26  # most recent ~6 months held out for out-of-sample evaluation
+
+
+class InsufficientData(ValueError):
+    pass
+
+
+def _train_end() -> pd.Timestamp:
+    return pd.Timestamp(config.SNAPSHOT_DATE) + timedelta(days=1) - timedelta(weeks=TEST_WEEKS)
 
 
 def _panel(con=None) -> pd.DataFrame:
@@ -79,7 +87,11 @@ def _model_bundle(db_path: str):
     panel = _panel()
     lab = panel.dropna(subset=["label_next_week_miss"])
     feats = list(FEATURES)
-    train, test = lab[lab.window_end < TRAIN_END], lab[lab.window_end >= TRAIN_END]
+    train_end = _train_end()
+    train, test = lab[lab.window_end < train_end], lab[lab.window_end >= train_end]
+    if train.label_next_week_miss.nunique() < 2 or test.label_next_week_miss.nunique() < 2 or len(train) < 50:
+        raise InsufficientData(f"Not enough labelled service-weeks to train and test the risk model "
+                               f"(train {len(train)}, test {len(test)}). Needs several months of incident history.")
     sc, m = _fit(train[feats], train.label_next_week_miss)
     p_test = m.predict_proba(sc.transform(test[feats]))[:, 1]
     # Persistence baseline: "missed this week -> will miss next week".
@@ -90,7 +102,7 @@ def _model_bundle(db_path: str):
     top_model = test.assign(p=p_test).sort_values("p", ascending=False).head(k).label_next_week_miss.mean()
     evaluation = {
         "train_windows": int(len(train)), "test_windows": int(len(test)),
-        "train_period": f"to {TRAIN_END.date()}", "test_period": f"{TRAIN_END.date()} to {config.SNAPSHOT_DATE}",
+        "train_period": f"to {train_end.date()}", "test_period": f"{train_end.date()} to {config.SNAPSHOT_DATE}",
         "positive_rate_test": round(float(test.label_next_week_miss.mean()), 3),
         "model_auc": round(float(roc_auc_score(test.label_next_week_miss, p_test)), 3),
         "model_brier": round(float(brier_score_loss(test.label_next_week_miss, p_test)), 3),

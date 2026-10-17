@@ -4,6 +4,8 @@
     python -m opsintel.cli etl          # re-run ETL only
     python -m opsintel.cli ask "Why did costs rise this month?" --user opsmgr.demo [--engine rules|claude]
     python -m opsintel.cli docs         # regenerate docs/data_dictionary.md from the catalogue
+    python -m opsintel.cli servicenow-test          # check SN_* credentials and table read access
+    python -m opsintel.cli servicenow-sync          # extract a ServiceNow instance -> data_servicenow/ -> ETL
 """
 from __future__ import annotations
 
@@ -44,12 +46,52 @@ def data_dictionary():
     print("Wrote docs/data_dictionary.md")
 
 
+def servicenow_test():
+    from opsintel.etl.servicenow import Credentials, ServiceNowClient, check_access
+
+    creds = Credentials.from_env()
+    client = ServiceNowClient(creds)
+    try:
+        print(f"Instance: {creds.instance}   auth: {creds.mode} ({creds.principal})")
+        for table, status in check_access(client).items():
+            print(f"  {table:16} {status}")
+    finally:
+        client.close()
+
+
+def servicenow_sync(since_days: int | None):
+    from opsintel.etl.pipeline import run_pipeline
+    from opsintel.etl.servicenow import Credentials, ServiceNowClient, extract, land
+
+    creds = Credentials.from_env()
+    out = config.ROOT / "data_servicenow"
+    client = ServiceNowClient(creds)
+    try:
+        print(f"Extracting from {creds.instance} ...")
+        raw = extract(client, since_days)
+    finally:
+        client.close()
+    manifest = land(raw, out, creds.instance)
+    print(json.dumps({k: manifest[k] for k in ("rows", "api_requests", "data_start", "snapshot_date", "mapping_gaps")}, indent=2))
+    config.use_data_dir(out)
+    if config.DB_PATH.exists():
+        config.DB_PATH.unlink()
+    report = run_pipeline()
+    inc = report.get("incidents", {})
+    print(f"ETL run {report['_run']['run_id']}: incidents loaded {inc.get('after', {}).get('rows')}, "
+          f"rejected {inc.get('rejects', {})}, FK violations {report['_run']['foreign_key_violations']}")
+    print("Open the dashboard on this data with:  OPSINTEL_DATA_DIR=data_servicenow make ui")
+
+
 def main():
     ap = argparse.ArgumentParser(prog="opsintel")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup")
     sub.add_parser("etl")
     sub.add_parser("docs")
+    sub.add_parser("servicenow-test")
+    sn = sub.add_parser("servicenow-sync")
+    sn.add_argument("--since-days", type=int, default=None, help="only incidents/requests opened in the last N days")
     a = sub.add_parser("ask")
     a.add_argument("question")
     a.add_argument("--user", default="opsmgr.demo")
@@ -62,6 +104,13 @@ def main():
         from opsintel.etl.pipeline import run_pipeline
 
         print(json.dumps(run_pipeline()["_run"]))
+    elif args.cmd in ("servicenow-test", "servicenow-sync"):
+        from opsintel.etl.servicenow import ServiceNowError
+
+        try:
+            servicenow_test() if args.cmd == "servicenow-test" else servicenow_sync(args.since_days)
+        except ServiceNowError as e:
+            raise SystemExit(f"ServiceNow: {e}")
     elif args.cmd == "docs":
         data_dictionary()
     elif args.cmd == "ask":

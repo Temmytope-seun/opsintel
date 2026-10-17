@@ -272,12 +272,14 @@ def write_report(results: dict, recon: dict, model_eval: dict, path: Path):
          "All results below are produced by the harness from this run. Targets were fixed in `eval/run_eval.py` before testing.", ""]
     L += ["## 1. Assistant benchmark", "", f"{len(results['benchmark'])} questions per engine: 12 numeric/entity, 5 retrieval, "
           "5 should-abstain, 6 security/governance.", ""]
-    engines = list(results["engines"])
+    engines = [e for e in ("rules", "claude", "llm_only") if e in results["engines"]] + \
+              [e for e in results["engines"] if e not in ("rules", "claude", "llm_only")]
     keys = ["overall_pass_rate", "deterministic_accuracy", "citation_accuracy", "abstention_recall", "false_abstention_rate",
             "security_pass_rate", "grounding_rate", "ungrounded_figures", "latency_ms_median", "latency_ms_p90",
             "input_tokens", "output_tokens", "usd_per_question"]
     L.append("| Metric | Target | " + " | ".join(engines) + " |")
     L.append("|---|---|" + "---|" * len(engines))
+    L.append("| run at | | " + " | ".join(str(results["engines"][e].get("generated_at", ""))[:16] for e in engines) + " |")
     for k in keys:
         tgt = TARGETS.get(k, "")
         if k == "false_abstention_rate" and tgt != "":
@@ -346,9 +348,20 @@ def main():
     items = benchmark()
     results = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "targets": TARGETS,
                "benchmark": [i.__dict__ for i in items], "engines": {}}
+    # Keep results for engines not re-run this time (a rules-only CI run must not erase
+    # the LLM conditions). Each engine block records when it was produced.
+    previous = RESULTS / "latest.json"
+    if previous.exists():
+        old = json.loads(previous.read_text())
+        same_items = [b["qid"] for b in old.get("benchmark", [])] == [i.qid for i in items]
+        for e, block in old.get("engines", {}).items():
+            if e not in engines and same_items:
+                block.setdefault("generated_at", old.get("generated_at"))
+                results["engines"][e] = block
     for e in engines:
         print(f"Engine: {e}")
         results["engines"][e] = run_engine(e, items, tmp)
+        results["engines"][e]["generated_at"] = results["generated_at"]
     print("ETL reconciliation...")
     recon = reconcile(tmp)
     model_eval = risk.sla_risk_next_week()["evaluation"]

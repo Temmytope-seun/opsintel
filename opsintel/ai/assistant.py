@@ -220,6 +220,8 @@ class RulesEngine:
 
     def sla_risk(self, q, ctx):
         e1 = call_tool(ctx, "get_sla_risk_forecast", {})
+        if e1.is_error:
+            return self._abstain(ctx, self._err(e1)), True
         r = e1.result
         ev = r["evaluation"]
         lines = [f"Forecast for {r['forecast_week']} - services most likely to miss 90% SLA compliance [{e1.evidence_id}]:", ""]

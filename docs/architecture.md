@@ -1,5 +1,7 @@
 # Architecture
 
+> Editable versions of these diagrams (and six more) are in [diagrams/opsintel_architecture.drawio](diagrams/opsintel_architecture.drawio).
+
 OpsIntel is a layered platform, not a chat window on a database. Each layer can be tested on its own, and the language model sits on top of a deterministic analytics layer it cannot bypass.
 
 ## 1. Layered view

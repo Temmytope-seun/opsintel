@@ -332,10 +332,17 @@ def headline_kpis(con=None) -> dict:
                        {"m": snap_m, "p": prev_m}, con).set_index("month").cost
     open_inc = db.query_df("SELECT COUNT(*) AS n FROM incidents WHERE resolved_at IS NULL", (), con).n.iloc[0]
     out = {"month": snap_m, "previous_month": prev_m, "open_incidents": int(open_inc)}
+
+    def val(frame_or_series, month, col=None):
+        try:
+            x = frame_or_series.loc[month, col] if col else frame_or_series[month]
+            return None if pd.isna(x) else round(float(x), 2)
+        except KeyError:
+            return None   # no data for that month (e.g. a source without costs)
+
     for k in ("incidents", "breach_rate_pct", "mttr_hours", "outage_minutes"):
-        out[k] = float(df.loc[snap_m, k])
-        out[f"{k}_prev"] = float(df.loc[prev_m, k])
-    out["cost_gbp"], out["cost_gbp_prev"] = round(float(cost[snap_m]), 2), round(float(cost[prev_m]), 2)
+        out[k], out[f"{k}_prev"] = val(df, snap_m, k), val(df, prev_m, k)
+    out["cost_gbp"], out["cost_gbp_prev"] = val(cost, snap_m), val(cost, prev_m)
     return out
 
 

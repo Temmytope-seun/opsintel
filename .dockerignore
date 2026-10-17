@@ -4,3 +4,5 @@ eval/results
 .git
 .claude
 **/__pycache__
+.env
+data_servicenow
