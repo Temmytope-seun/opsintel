@@ -1,0 +1,140 @@
+# OpsIntel AI
+
+**A governed, LLM-assisted operational intelligence platform for IT service businesses.**
+
+OpsIntel ingests data from separate enterprise systems, unifies and validates it, detects operational issues, and lets managers ask questions in plain English. Answers are backed by evidence and come with recommended actions. Every figure traces back to data, every document is cited, and no consequential action happens without human approval.
+
+> **Proof of concept on synthetic data.** All data describes a fictional company. It is designed around the shape of a multi-service IT group (managed support, telecoms, cloud hosting, data centres, software development), but no real company's data, systems or performance are represented. A real deployment begins with discovery (see [requirements §7](docs/requirements.md#7-discovery-questions-for-the-partner-company)).
+
+## What it does
+
+| Question a manager asks | What happens |
+|---|---|
+| *Why did our operational costs increase this month?* | Cost change by service × cost type, the finance ledger narrative, and abnormal lines flagged by robust z-scores |
+| *Which category had the highest SLA breach rate last quarter, and why?* | Breach rate vs the previous quarter, root-cause shift, and the relevant runbook or problem record |
+| *Which services are at greatest risk of missing their SLA next week?* | Explainable logistic model: probability, bootstrap interval and top drivers, with out-of-sample performance against a baseline |
+| *Which open issues are most likely to delay delivery?* | Open requests scored by elapsed time, dependency blockers and historical lateness |
+| *What should support do when a recurring network incident occurs?* | Finds the recurring fault in the data, retrieves the runbook, gives the steps and escalation rules, and withholds restricted documents for your role |
+| *What was our revenue?* | "I can't answer that reliably from the available data", because the data doesn't cover it |
+
+## Architecture
+
+```
+Sources (CMDB db · ITSM CSV · finance CSV · monitoring REST · runbooks)
+   → Integration & quality (connectors · validation · entity matching · quarantine · lineage)
+   → Unified foundation (typed schema · metadata catalogue · metric definitions · document index)
+   → Analytics (KPIs · Isolation Forest · risk model)   +   AI (Claude tool calling · RAG · guarded SQL · grounding check)
+   → Interface (Streamlit dashboard · REST API)
+Cross-cutting: RBAC · engine-level PII denial · injection screening · human approval · hash-chained audit · evaluation
+```
+
+Diagrams, the request sequence, the threat/control table and the PostgreSQL mapping are in [docs/architecture.md](docs/architecture.md).
+
+## Quick start
+
+```bash
+make install
+```
+
+```bash
+make setup
+```
+
+```bash
+make ui
+```
+
+The setup step generates the synthetic sources, runs the ETL and writes the data dictionary. `make ui` opens the dashboard at http://localhost:8501. Other targets:
+
+```bash
+make api
+```
+
+```bash
+make test
+```
+
+```bash
+make eval
+```
+
+`make api` serves the REST API (docs at http://localhost:8000/docs), `make test` runs 51 tests, and `make eval` runs the benchmark, reconciliation and risk evaluation and writes `docs/evaluation_report.md`.
+
+Or with Docker:
+
+```bash
+docker compose up --build
+```
+
+**LLM engine:** set `ANTHROPIC_API_KEY` to enable the Claude engine (default model `claude-opus-5-5`, configurable through `OPSINTEL_MODEL`). Without credentials the platform runs the deterministic rules engine, so every feature except open-ended questions works offline.
+
+Command-line use:
+
+```bash
+.venv/bin/python -m opsintel.cli ask "Why did our operational costs increase this month?" --user opsmgr.demo
+```
+
+## Results (from the latest harness run, not hand-written)
+
+From [docs/evaluation_report.md](docs/evaluation_report.md): one run of the 28-question benchmark under the three research conditions (Claude Opus 5.5 for the two LLM conditions).
+
+| Measure | Target (set before testing) | Analytics-only (rules) | **Hybrid (Claude + tools)** | LLM-only (no data) |
+|---|---|---|---|---|
+| Overall pass rate | | 0.929 | **0.964** | 0.357 |
+| Numeric / factual accuracy | ≥ 0.95 | 0.833 | **1.0** | 0.0 |
+| Citation accuracy | ≥ 0.90 | 1.0 | **1.0** | 0.0 |
+| Abstains when it should | ≥ 0.90 | 1.0 | 0.8 | 1.0 |
+| Abstains when it shouldn't | ≤ 0.10 | 0.0 | **0.0** | 0.824 |
+| Security / governance probes | 1.0 | 1.0 | **1.0** | 0.833 |
+| Figures traceable to evidence | ≥ 0.98 | 1.0 | 0.979 (7 flagged) | 0.0 |
+| Median latency | | < 1 s | 10.4 s | 7.2 s |
+| Cost per question (list price) | | £0 | ≈ $0.075 | ≈ $0.015 |
+
+Data integration: ETL reconciliation is 1.0 on all four sources. Risk model AUC is 0.668 against 0.567 for a persistence baseline (out of sample).
+
+**Reading the results honestly**
+- The hybrid condition answered every numeric, retrieval and security question correctly. Its one failure (A4, "which engineer closed the most tickets") was a sensible partial answer: it explained that no per-engineer data exists and gave team-level figures. It failed only the rubric's strict refusal check. The rubric was not changed after seeing results.
+- Of the 7 figures flagged in hybrid answers, 5 are real: the model did arithmetic or approximated in its head ("about 91% of the rise", "130 outages", "£1,000–£1,400") despite being told to use tools for that. 2 were checker errors (a 2.32 ratio shown as 232%), fixed since this run. Hardening the prompt against head arithmetic is the next improvement to measure.
+- The LLM-only baseline mostly declined to answer. When it did answer, it stated 10 figures with nothing behind them. That's the failure mode the tool layer exists to prevent.
+- This is a single run. LLM results vary between runs: an earlier run of the same benchmark scored 28/28 for the hybrid condition. The research protocol calls for n ≥ 3 runs with variance reported.
+
+## Repository map
+
+| Path | Contents |
+|---|---|
+| `opsintel/datagen/` | Synthetic data generator with planted signals and injected data defects |
+| `opsintel/sources/` | Mock monitoring REST API (paginated, at-least-once delivery) |
+| `opsintel/etl/` | Connectors, profiling, entity matching, pipeline with lineage and quarantine |
+| `opsintel/db.py` | Schema, metadata catalogue, metric definitions |
+| `opsintel/analytics/` | KPIs, anomaly detection, SLA risk model, delivery risk |
+| `opsintel/ai/` | Tools and evidence registry, Claude and rules engines, RAG, SQL guard, injection screen, grounding check |
+| `opsintel/governance/` | RBAC, PII masking, hash-chained audit, action approval workflow |
+| `opsintel/api/` | FastAPI service |
+| `app/` | Streamlit decision-support UI |
+| `knowledge/` | Runbooks, policies, problem record, and a vendor bulletin containing a prompt-injection payload |
+| `eval/` | Independent ground truth, benchmark, harness |
+| `tests/` | Unit, security, workflow, API and LLM-loop tests |
+| `docs/` | Requirements, architecture, data dictionary, governance/DPIA, research proposal, evaluation report, SaaS roadmap, user guide, demo script |
+
+## How this maps to the KTP role
+
+| KTP responsibility | Evidence in this repository |
+|---|---|
+| Business process familiarisation | [requirements.md](docs/requirements.md): personas, process map, user stories with acceptance criteria |
+| Existing architecture investigation | [architecture.md §3](docs/architecture.md#3-source-system-inventory-illustrative-current-state): source inventory and defects; discovery questions |
+| Literature review | [research_proposal.md §3](docs/research_proposal.md#3-literature-review-plan) |
+| Unified data architecture | `db.py`, [data_dictionary.md](docs/data_dictionary.md), ETL with quality checks and lineage |
+| AI-assisted operational intelligence | Dashboard, assistant, risk and anomaly models, action recommendations |
+| Pilot and governance | Docker/compose, RBAC, audit, [governance_risk_assessment.md](docs/governance_risk_assessment.md), security tests |
+| Integration and training | REST API (`/docs`), [user_guide.md](docs/user_guide.md) with training plan and feedback form |
+| SaaS commercialisation | [roadmap_saas.md](docs/roadmap_saas.md): multi-tenant design, cost model, pricing hypothesis |
+| Academic outputs | [research_proposal.md](docs/research_proposal.md), [evaluation_report.md](docs/evaluation_report.md) |
+
+## Known limitations
+
+- The LLM conditions were evaluated on one run each; see the variance note above.
+- The benchmark and the data have the same author, which inflates absolute scores. The meaningful output is the comparison between conditions on identical items, and then a re-run on real pilot data with staff-written questions.
+- ETL reconciliation is 100% partly by construction: injected defects are recoverable, apart from junk rows that are meant to be rejected. Real data will have defects the pipeline has not seen.
+- The risk model is modest (AUC ≈ 0.67). It beats a naive baseline and reports uncertainty, but it is a prioritisation aid, not a forecast to plan staffing around.
+- TF-IDF retrieval misses paraphrases with no shared vocabulary. The hybrid design compensates by deriving search terms from the data (for example the recurring root cause), and pgvector is the pilot upgrade.
+- Demo identities are chosen through a header or selector. A pilot needs SSO.

@@ -1,0 +1,19 @@
+# Pilot-style deployment: UI + API from the same image, sharing one data volume.
+services:
+  api:
+    build: .
+    command: ["uvicorn", "opsintel.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["8000:8000"]
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPSINTEL_WEBHOOK_URL=${OPSINTEL_WEBHOOK_URL:-}
+    volumes: ["opsdata:/app/data"]
+  ui:
+    build: .
+    ports: ["8501:8501"]
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes: ["opsdata:/app/data"]
+    depends_on: [api]
+volumes:
+  opsdata:
