@@ -177,7 +177,7 @@ Data integration: ETL reconciliation is 1.0 on all four sources. Risk model AUC 
 | Unified data architecture | `db.py`, [data_dictionary.md](docs/data_dictionary.md) (including the ServiceNow field mapping), ETL with quality checks and lineage applied to synthetic and live ServiceNow sources |
 | AI-assisted operational intelligence | Dashboard, assistant, risk and anomaly models, action recommendations; methods and verification in [analytics.md](docs/analytics.md) |
 | Pilot and governance | Docker/compose, RBAC, audit, [governance_risk_assessment.md](docs/governance_risk_assessment.md), security tests |
-| Integration and training | REST API ([api.md](docs/api.md), interactive at `/docs`), [user_guide.md](docs/user_guide.md) with training plan and feedback form |
+| Integration and training | REST API ([api.md](docs/api.md), interactive at `/docs`), [user_guide.md](docs/user_guide.md) with training plan and feedback form, [training slides](https://claude.ai/artifact/QGo2fUhUCnFJUt9RudasdL) |
 | SaaS commercialisation | [roadmap_saas.md](docs/roadmap_saas.md): multi-tenant design, cost model, pricing hypothesis |
 | Academic outputs | [technical_report.md](docs/technical_report.md) (draft paper: design, method, results, discussion), [research_proposal.md](docs/research_proposal.md), [literature_review.md](docs/literature_review.md), [evaluation_report.md](docs/evaluation_report.md) |
 

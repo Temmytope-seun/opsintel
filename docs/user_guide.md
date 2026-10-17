@@ -49,6 +49,8 @@ Include a period when it matters (`Q2 2026`, `August 2026`, `this month`). "This
 
 ## 5. Training plan (90 minutes per cohort)
 
+Slides for this session (13 slides with speaker notes): [OpsIntel AI user training deck](https://claude.ai/artifact/QGo2fUhUCnFJUt9RudasdL). The link is private until the owner shares it.
+
 | Segment | Minutes | Content |
 |---|---|---|
 | Why and what | 10 | The problem; what the platform does and does not do |
