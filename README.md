@@ -17,6 +17,10 @@ OpsIntel ingests data from separate enterprise systems, unifies and validates it
 | *What should support do when a recurring network incident occurs?* | Finds the recurring fault in the data, retrieves the runbook, gives the steps and escalation rules, and withholds restricted documents for your role |
 | *What was our revenue?* | "I can't answer that reliably from the available data", because the data doesn't cover it |
 
+## Demo
+
+A 3¾-minute captioned walkthrough of both dashboards (synthetic and live ServiceNow): [docs/demo/opsintel_demo.webm](docs/demo/opsintel_demo.webm). It follows [docs/demo_script.md](docs/demo_script.md) and is regenerated with `.venv/bin/python tools/record_demo.py` while both dashboards run (needs `requirements-dev.txt` and `python -m playwright install ffmpeg`).
+
 ## Screenshots
 
 | Operational overview | Assistant answer with evidence |

@@ -123,7 +123,11 @@ with st.sidebar:
                           help="claude = LLM with tools (needs ANTHROPIC_API_KEY); rules = deterministic analytics-only engine")
     if not llm_available():
         st.caption("No Anthropic credentials found - running the deterministic engine. Set ANTHROPIC_API_KEY to enable Claude.")
-    st.caption(f"Data snapshot: {config.SNAPSHOT_DATE}. Synthetic data for a fictional company.")
+    if config.SOURCE == "servicenow":
+        st.caption(f"Data snapshot: {config.SNAPSHOT_DATE}. Live ServiceNow developer instance "
+                   "(demo records plus seeded history).")
+    else:
+        st.caption(f"Data snapshot: {config.SNAPSHOT_DATE}. Synthetic data for a fictional company.")
 
 can_cost = "costs" in user.role.tables
 

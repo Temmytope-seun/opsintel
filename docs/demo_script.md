@@ -1,5 +1,7 @@
 # Interview demo script (about 9 minutes)
 
+> A recorded, captioned version of this walkthrough (3¾ minutes, no narration) is in [demo/opsintel_demo.webm](demo/opsintel_demo.webm).
+
 **Setup:** `make setup && make ui` (and `make api` in a second terminal). For step 10, run `make sn-sync` beforehand and `make sn-ui` in another terminal. Optionally export `ANTHROPIC_API_KEY` to show the Claude engine; the demo also works on the rules engine.
 
 | # | Time | Do | Say |
