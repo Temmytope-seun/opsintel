@@ -7,7 +7,8 @@ flowchart LR
     S[(Unified store)] --> K[KPIs<br/>kpis.py]
     S --> A[Anomaly detection<br/>anomaly.py]
     S --> R[Risk scoring<br/>risk.py]
-    K & A & R --> T[Tool layer<br/>evidence E1, E2 …]
+    S --> F[Forecasts<br/>forecast.py]
+    K & A & R & F --> T[Tool layer<br/>evidence E1, E2 …]
     T --> D[Dashboard]
     T --> AI[Assistant<br/>Claude or rules engine]
     AI --> G[Grounding check<br/>every figure vs evidence]
@@ -105,9 +106,28 @@ score = 40 × (share of the target time already used, capped at 1)
 overdue requests score 100
 ```
 
+## 3a. Three-month forecasts
+
+`opsintel/analytics/forecast.py` forecasts **incidents opened per month** and **operating cost per month** for the next three months, as a total and optionally by group (category, service, business unit, priority; for cost: business unit, cost type, service). The dashboard shows it on the *Risk & anomalies* page, the assistant calls it through the `get_incident_forecast` and `get_cost_forecast` tools, and the API serves it at `/forecast/{incidents|cost}`.
+
+**Series.** Monthly totals from the last complete month backwards. A partial first month is dropped. On ServiceNow the series starts after the last gap of three or more empty months, so scattered years-old demo records do not count as history, and a first month under half the median is treated as partial. At least 9 months are needed. With less, the forecast says so instead of guessing.
+
+**Methods.** Eighteen months is too short for heavy models, so four transparent candidates compete:
+
+| Method | Forecast |
+|---|---|
+| Naive (the baseline) | Last complete month, repeated |
+| 3-month average | Mean of the last three months |
+| Damped Holt trend | Level plus a trend that fades (φ = 0.9); smoothing picked by in-sample one-step error |
+| Seasonal naive | Same month last year (only with 30+ months of history) |
+
+**Selection and uncertainty.** Each series is backtested with a rolling origin: forecast from each of the last 6 months, 1 to 3 months ahead, and compare with what happened. The method with the lowest mean absolute error (MAE) wins; ties go to the naive baseline. The 80% range is the estimate plus or minus the 80th percentile of that method's absolute backtest errors. Every result reports the winning method, its backtest MAE, the naive MAE and the skill (percentage improvement over naive), as Hyndman and Athanasopoulos (2021) recommend.
+
+**What it shows today.** On synthetic data, total incident volume is best forecast by *last month repeated* (skill 0%, typical error about 38 incidents a month), so the platform says no method beat the baseline. Some categories and most cost lines do better: the 3-month average or damped trend beat naive by 17–36% on Cloud, Data Centre, Facilities, Productivity and Telephony incidents, and by up to 40% on cost by business unit. On ServiceNow, the 3-month average beat naive by 16% and did not chase the September email-gateway spike.
+
 ## 4. How the assistant uses the analytics
 
-1. The assistant (Claude or the rules engine) chooses **tools**: 16 in total, wrapping the functions above, plus document search and a guarded read-only SQL tool for anything else.
+1. The assistant (Claude or the rules engine) chooses **tools**: 18 in total, wrapping the functions above, plus document search and a guarded read-only SQL tool for anything else.
 2. Each tool result is checked against the user's role, has personal data masked and injected instructions screened, then becomes numbered **evidence** (E1, E2 …) with its SQL.
 3. The answer must cite that evidence. A **grounding check** then confirms every figure in the answer appears in (or is a rounding of) a number in the evidence. Untraceable figures are flagged in the UI. In evaluation this caught Claude approximating "about 91%" in its head.
 
@@ -118,11 +138,12 @@ overdue requests score 100
 | **Independent ground truth** (`eval/ground_truth.py`) | Key answers are recomputed with pandas directly from the generator's clean truth tables, without the platform's SQL. Tests and the evaluation check they agree, so a bug in the KPI code cannot mark itself correct. |
 | **Planted stories recovered** | Synthetic: Network breach rate 9.2% → 27.2% from a switch firmware defect; September costs up £58.6k from licence true-ups. ServiceNow seeded history: Network breach rate 11.1% → 34.4% from VPN failures; email incidents 14 → 95 in the September mail-gateway spike. |
 | **Out-of-sample risk evaluation** | As in §3, recomputed on every evaluation run. |
-| **Automated tests** | `tests/test_kpis.py` (KPIs vs truth, periods, risk model vs baseline), `tests/test_assistant.py` (grounding), plus the evaluation harness. |
+| **Automated tests** | `tests/test_kpis.py` (KPIs vs truth, periods, risk model vs baseline), `tests/test_forecast.py` (trend recovery, never worse than naive in backtest, history totals vs SQL, short-history refusal), `tests/test_assistant.py` (grounding), plus the evaluation harness. |
 
 ## 6. Limitations
 
 - **Root cause is only as good as what is recorded.** On synthetic data it is a recorded root-cause code. On ServiceNow it is the incident subcategory (e.g. "Network / VPN"), because this release has no incident-to-problem link.
 - **The risk model is modest.** It should guide where to look first, not plan staffing.
+- **Forecasts extrapolate history.** They cannot anticipate one-off events (a firmware defect, a licence true-up) that have not happened yet, and with 9–18 months of history the range is wide. Use them for planning, not commitments.
 - **Improvement-priority weights are a judgement call.** The 50/50 split should be agreed with service owners in a real deployment.
 - **Some analyses need data a source may lack.** Costs, monitoring alerts and outage minutes are not in a standard ServiceNow instance, so those analyses report "not available from this source" instead of guessing.

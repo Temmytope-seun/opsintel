@@ -218,7 +218,7 @@ A governed design, in which the LLM plans and explains while deterministic tools
 2. At least three runs per condition with confidence intervals, and the data-quality ablation.
 3. Prompt and tool changes to eliminate unsourced arithmetic, measured on the same benchmark.
 4. Incremental scheduled sync, PostgreSQL with row-level security, and an API access policy restricting the integration token.
-5. Volume and cost forecasting (added after this report; see [analytics.md](analytics.md)).
+5. Evaluate the volume and cost forecasts (added after this report; see [analytics.md](analytics.md) §3a) over a longer history, where seasonal methods become possible.
 
 ## References
 

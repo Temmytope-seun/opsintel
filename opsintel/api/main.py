@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from opsintel import db
 from opsintel.ai.assistant import ask
-from opsintel.analytics import anomaly, kpis, risk
+from opsintel.analytics import anomaly, forecast, kpis, risk
 from opsintel.governance import actions, audit
 from opsintel.governance.rbac import AccessDenied, User, get_user
 
@@ -106,6 +106,19 @@ def sla_risk(user: User = Depends(current_user)):
 @app.get("/risk/delivery", summary="Open service requests ranked by risk of missing their due date")
 def delivery_risk(limit: int = Query(15, ge=1, le=100), user: User = Depends(current_user)):
     return risk.delivery_delay_risk(limit)
+
+
+@app.get("/forecast/{metric}", summary="Three-month forecast of incident volume or operating cost, with 80% range and backtest")
+def forecast_endpoint(metric: Literal["incidents", "cost"], group_by: str | None = None, user: User = Depends(current_user)):
+    try:
+        if metric == "cost":
+            _need_costs(user)
+            return forecast.cost_forecast(group_by)
+        return forecast.incident_forecast(group_by)
+    except risk.InsufficientData as e:
+        raise HTTPException(422, str(e))
+    except ValueError as e:
+        _bad(e)
 
 
 @app.get("/anomalies/{kind}", summary="Recent operational or cost anomalies")

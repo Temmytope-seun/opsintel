@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from opsintel import config, db  # noqa: E402
 from opsintel.ai.assistant import ask, llm_available  # noqa: E402
-from opsintel.analytics import anomaly, kpis, risk  # noqa: E402
+from opsintel.analytics import anomaly, forecast, kpis, risk  # noqa: E402
 from opsintel.governance import actions, audit  # noqa: E402
 from opsintel.governance.rbac import DEMO_USERS, AccessDenied, get_user  # noqa: E402
 
@@ -34,6 +34,7 @@ EXAMPLES = [
     "Which business process should we improve first, and why?",
     "Which service category had the highest SLA breach rate last quarter, and what explains the increase?",
     "Which services are at greatest risk of missing their SLA next week?",
+    "Forecast our operating costs for the next three months by business unit",
     "What should the support team do when a recurring network incident occurs?",
 ]
 # ServiceNow data has incidents, requests and the CMDB but no costs, monitoring or outages, so the
@@ -46,6 +47,7 @@ EXAMPLES_SERVICENOW = [
     "Which business process should we improve first, and why?",
     "Which services have the most open incidents past their SLA target?",
     "Have there been any unusual spikes in incidents recently?",
+    "How many incidents should we expect over the next three months by category?",
 ]
 EXAMPLES_SERVICENOW_CLAUDE = [
     "What is driving the rise in Network incidents since July 2026?",
@@ -309,6 +311,39 @@ elif page == "Risk & anomalies":
         m[1].metric("Model Brier", ev["model_brier"], f"{ev['model_brier'] - ev['baseline_persistence_brier']:+.3f}", delta_color="inverse")
         m[2].metric("Test windows", ev["test_windows"])
         m[3].metric("Positive rate (test)", f"{100 * ev['positive_rate_test']:.0f}%")
+
+    st.header("Three-month forecast")
+    fc_opts = {"Incidents": forecast.incident_forecast} | ({"Operating cost": forecast.cost_forecast} if can_cost else {})
+    fc_cols = st.columns([1, 1, 3])
+    fc_metric = fc_cols[0].selectbox("Forecast", list(fc_opts), key="fc_metric")
+    fc_group_opts = ["total", "category", "service", "business_unit", "priority"] if fc_metric == "Incidents" else \
+        ["total", "business_unit", "cost_type", "service"]
+    fc_group = fc_cols[1].selectbox("By", fc_group_opts, key="fc_group")
+    try:
+        fc = fc_opts[fc_metric](None if fc_group == "total" else fc_group)
+    except risk.InsufficientData as e:
+        fc = None
+        st.info(str(e))
+    if fc is not None:
+        hist = pd.DataFrame(fc["history"]).set_index("month")
+        fut = pd.DataFrame(fc["data"])
+        names = [g["group"] for g in fc["groups"]]
+        if "Total" in names and fc_group != "total":
+            hist["Total"] = hist.sum(axis=1)
+        fig = go.Figure()
+        for i, name in enumerate(names[:6]):
+            color = SERIES[i % len(SERIES)]
+            f = fut[fut.group == name]
+            fig.add_trace(go.Scatter(x=hist.index, y=hist[name], name=name, line=dict(color=color, width=2), legendgroup=name))
+            fig.add_trace(go.Scatter(x=list(f.month) + list(f.month)[::-1], y=list(f.high_80) + list(f.low_80)[::-1],
+                                     fill="toself", fillcolor=color, opacity=0.15, line=dict(width=0), hoverinfo="skip",
+                                     showlegend=False, legendgroup=name))
+            fig.add_trace(go.Scatter(x=[hist.index[-1]] + list(f.month), y=[hist[name].iloc[-1]] + list(f.forecast),
+                                     line=dict(color=color, width=2, dash="dot"), showlegend=False, legendgroup=name))
+        fig.update_layout(hovermode="x unified")
+        st.plotly_chart(style(fig, f"{fc_metric} per month: history, forecast (dotted) and 80% range (shaded)", 420), width="stretch")
+        st.caption(fc["summary"] + " " + fc["method_note"])
+        st.dataframe(pd.DataFrame(fc["groups"]).drop(columns=["last_month"]), hide_index=True, width="stretch")
 
     st.header("Delivery risk - open service requests")
     d = risk.delivery_delay_risk(20)

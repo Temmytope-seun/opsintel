@@ -98,6 +98,10 @@ def _category(q: str) -> str | None:
     return None
 
 
+FORECAST_PAT = (r"(next (few |two |three |2 |3 )?months|next month|coming months|next quarter|rest of the year"
+                r"|(forecast|project|predict|expect)\w*\b.{0,60}\b(incidents?|volumes?|demand|costs?|spend\w*|budget))")
+
+
 class RulesEngine:
     name = "rules"
 
@@ -110,6 +114,7 @@ class RulesEngine:
             term = UNAVAILABLE.search(q).group()
             return self._abstain(ctx, f"the operational data store has no '{term}' data"), True
         intents = [
+            (FORECAST_PAT, self.forecast),
             (r"\b(costs?|spend(ing)?|expenditure|budget)\b", self.cost),
             (r"(next week|forecast|predict|at (greatest |highest )?risk of missing|likely to (miss|breach))", self.sla_risk),
             (r"(delay|delivery|deliver|overdue|late request|committed date)", self.delivery),
@@ -227,6 +232,44 @@ class RulesEngine:
                         "remove this cost - consider claiming vendor service credits.")
         recs.append("Ask Finance to confirm which increases are one-off versus recurring.")
         return "\n".join(lines) + "\n\n**Recommended actions**\n" + "\n".join(f"- {x}" for x in recs), False
+
+    def forecast(self, q, ctx):
+        ql = q.lower()
+        if re.search(r"next week|sla|breach|at risk", ql):
+            return self.sla_risk(q, ctx)
+        is_cost = bool(re.search(r"\b(costs?|spend\w*|expenditure|budget)\b", ql))
+        groups = [("business unit", "business_unit"), ("cost type", "cost_type"), ("category", "category"),
+                  ("priorit", "priority"), ("service", "service")]
+        allowed = ("business_unit", "cost_type", "service") if is_cost else ("category", "service", "business_unit", "priority")
+        group = next((g for k, g in groups if k in ql and g in allowed), None)
+        e1 = call_tool(ctx, "get_cost_forecast" if is_cost else "get_incident_forecast", {"group_by": group} if group else {})
+        if e1.is_error:
+            return self._abstain(ctx, self._err(e1)), True
+        r, eid = e1.result, e1.evidence_id
+        fmt = (lambda v: f"£{v:,.0f}") if is_cost else (lambda v: f"{v:,.0f}")
+        tot = r["groups"][0]
+        first = next(d for d in r["data"] if d["group"] == tot["group"])
+        what = "Operating cost" if is_cost else "Incident volume"
+        lines = [f"{what} is forecast at **{fmt(first['forecast'])}** for {first['month']} (80% range {fmt(first['low_80'])} to "
+                 f"{fmt(first['high_80'])}) and **{fmt(tot['next_3m_total_forecast'])}** over {r['forecast_months'][0]} to "
+                 f"{r['forecast_months'][-1]}, {tot['change_vs_last_3m_pct']:+.1f}% against the last three months "
+                 f"({fmt(tot['last_3m_average'])} a month on average) [{eid}]."]
+        if tot["skill_vs_naive_pct"]:
+            lines.append(f"Method: {tot['method']}, which beat simply repeating last month by {tot['skill_vs_naive_pct']}% in "
+                         f"backtesting (mean absolute error {fmt(tot['backtest_mae'])} vs {fmt(tot['naive_backtest_mae'])} a month) [{eid}].")
+        else:
+            lines.append(f"No method beat simply repeating last month in backtesting, so that is the forecast; expect a typical "
+                         f"error of about {fmt(tot['backtest_mae'])} a month [{eid}].")
+        if group:
+            top = sorted(r["groups"][1:], key=lambda g: g["next_3m_total_forecast"], reverse=True)
+            if top:
+                lines.append("\n**By " + group.replace("_", " ") + " (largest first)**")
+                for g in top[:4]:
+                    chg = f", {g['change_vs_last_3m_pct']:+.1f}% vs the last three months" if g["change_vs_last_3m_pct"] else ""
+                    lines.append(f"- {g['group']}: {fmt(g['next_3m_total_forecast'])} over three months{chg} ({g['method']}) [{eid}]")
+        lines.append("\n_Planning aid, not a commitment: the range comes from backtest errors, and the forecast cannot "
+                     "anticipate one-off events that are not in the history._")
+        return "\n".join(lines), False
 
     def sla_risk(self, q, ctx):
         e1 = call_tool(ctx, "get_sla_risk_forecast", {})

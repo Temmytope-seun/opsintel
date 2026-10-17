@@ -21,6 +21,7 @@ Every endpoint except `/health` requires the header `X-User: <user_id>`. Demo us
 | GET | `/kpis/improvement-priorities` | Process areas ranked by customer impact | any known user |
 | GET | `/risk/sla-next-week` | Probability each service misses 90% SLA compliance next week | any known user |
 | GET | `/risk/delivery` | Open service requests ranked by risk of missing their due date | any known user |
+| GET | `/forecast/{metric}` | Three-month forecast of incident volume or operating cost, with 80% range and backtest | any known user |
 | GET | `/anomalies/{kind}` | Recent operational or cost anomalies | `cost` needs financial access |
 | POST | `/ask` | Ask the assistant a question; returns the answer with evidence and grounding | any known user |
 | GET | `/actions` | List actions, optionally filtered by status | any known user |
@@ -115,6 +116,17 @@ Open service requests ranked by risk of missing their due date
 | Parameter | In | Type | Required | Default |
 |---|---|---|---|---|
 | `limit` | query | integer | no | 15 |
+
+Responses: `200`, `422`
+
+### GET `/forecast/{metric}`
+
+Three-month forecast of incident volume or operating cost, with 80% range and backtest
+
+| Parameter | In | Type | Required | Default |
+|---|---|---|---|---|
+| `metric` | path | `incidents` / `cost` | yes |  |
+| `group_by` | query | string | null | no |  |
 
 Responses: `200`, `422`
 

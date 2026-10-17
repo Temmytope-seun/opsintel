@@ -32,3 +32,10 @@ def test_ask_and_action_flow():
 
 def test_bad_period_is_400():
     assert c.get("/kpis/sla-breach-rate?period=1999Q1", headers=H("exec.demo")).status_code == 400
+
+
+def test_forecast_endpoint():
+    r = c.get("/forecast/incidents?group_by=category", headers=H("analyst.demo"))
+    assert r.status_code == 200 and r.json()["forecast_months"] == ["2026-10", "2026-11", "2026-12"]
+    assert c.get("/forecast/cost", headers=H("desk.demo")).status_code == 403
+    assert c.get("/forecast/incidents?group_by=colour", headers=H("analyst.demo")).status_code == 400

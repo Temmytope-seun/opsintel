@@ -13,6 +13,7 @@ OpsIntel ingests data from separate enterprise systems, unifies and validates it
 | *Why did our operational costs increase this month?* | Cost change by service × cost type, the finance ledger narrative, and abnormal lines flagged by robust z-scores |
 | *Which category had the highest SLA breach rate last quarter, and why?* | Breach rate vs the previous quarter, root-cause shift, and the relevant runbook or problem record |
 | *Which services are at greatest risk of missing their SLA next week?* | Explainable logistic model: probability, bootstrap interval and top drivers, with out-of-sample performance against a baseline |
+| *How many incidents should we expect over the next three months by category?* | Monthly forecast with an 80% range; the method (naive, 3-month average or damped trend) is picked by backtest and its skill against the naive baseline is reported |
 | *Which open issues are most likely to delay delivery?* | Open requests scored by elapsed time, dependency blockers and historical lateness |
 | *What should support do when a recurring network incident occurs?* | Finds the recurring fault in the data, retrieves the runbook, gives the steps and escalation rules, and withholds restricted documents for your role |
 | *What was our revenue?* | "I can't answer that reliably from the available data", because the data doesn't cover it |
@@ -41,7 +42,7 @@ Screenshots are regenerated with `.venv/bin/python tools/capture_screenshots.py`
 Sources (CMDB db · ITSM CSV · finance CSV · monitoring REST · runbooks)
    → Integration & quality (connectors · validation · entity matching · quarantine · lineage)
    → Unified foundation (typed schema · metadata catalogue · metric definitions · document index)
-   → Analytics (KPIs · Isolation Forest · risk model)   +   AI (Claude tool calling · RAG · guarded SQL · grounding check)
+   → Analytics (KPIs · Isolation Forest · risk model · forecasts)   +   AI (Claude tool calling · RAG · guarded SQL · grounding check)
    → Interface (Streamlit dashboard · REST API)
 Cross-cutting: RBAC · engine-level PII denial · injection screening · human approval · hash-chained audit · evaluation
 ```
@@ -78,7 +79,7 @@ make test
 make eval
 ```
 
-`make api` serves the REST API (docs at http://localhost:8000/docs), `make test` runs 62 tests, and `make eval` runs the benchmark, reconciliation and risk evaluation and writes `docs/evaluation_report.md`.
+`make api` serves the REST API (docs at http://localhost:8000/docs), `make test` runs 70 tests, and `make eval` runs the benchmark, reconciliation and risk evaluation and writes `docs/evaluation_report.md`.
 
 Or with Docker:
 
@@ -157,7 +158,7 @@ Data integration: ETL reconciliation is 1.0 on all four sources. Risk model AUC 
 | `opsintel/etl/` | Connectors (CSV, database, REST, **ServiceNow Table API with OAuth**), profiling, entity matching, pipeline with lineage and quarantine |
 | `tools/servicenow/` | Admin scripts to seed a developer instance with realistic incident history, link problem records, and remove the seed |
 | `opsintel/db.py` | Schema, metadata catalogue, metric definitions |
-| `opsintel/analytics/` | KPIs, anomaly detection, SLA risk model, delivery risk ([how they work](docs/analytics.md)) |
+| `opsintel/analytics/` | KPIs, anomaly detection, SLA risk model, delivery risk, three-month forecasts ([how they work](docs/analytics.md)) |
 | `opsintel/ai/` | Tools and evidence registry, Claude and rules engines, RAG, SQL guard, injection screen, grounding check |
 | `opsintel/governance/` | RBAC, PII masking, hash-chained audit, action approval workflow |
 | `opsintel/api/` | FastAPI service |

@@ -14,7 +14,7 @@ from opsintel import db
 from opsintel.ai import rag
 from opsintel.ai.injection import screen
 from opsintel.ai.sql_guard import QueryRejected, run_query
-from opsintel.analytics import anomaly, kpis, risk
+from opsintel.analytics import anomaly, forecast, kpis, risk
 from opsintel.governance import actions, audit
 from opsintel.governance.pii import mask
 from opsintel.governance.rbac import AccessDenied, User
@@ -191,6 +191,14 @@ TOOLS: list[Tool] = [
          {"limit": _int("Max rows", 1, 50)}, ["limit"], lambda ctx, limit: risk.delivery_delay_risk(limit, ctx.con)),
     Tool("get_sla_risk_forecast", "Predicted probability each service misses 90% SLA compliance next week, with uncertainty interval, "
          "main drivers and the model's out-of-sample evaluation.", {}, [], lambda ctx: risk.sla_risk_next_week(14, ctx.con)),
+    Tool("get_incident_forecast", "Forecast of incidents opened per month for the next three months, total and optionally by "
+         "group, with an 80% range and backtest accuracy against a naive baseline. Use for future incident volume or demand.",
+         {"group_by": _str("Optional grouping", ["category", "service", "business_unit", "priority"])}, [],
+         lambda ctx, group_by=None: forecast.incident_forecast(group_by, ctx.con)),
+    Tool("get_cost_forecast", "Forecast of operating cost (GBP) per month for the next three months, total and optionally by "
+         "group, with an 80% range and backtest accuracy against a naive baseline. Use for future spend or budget questions.",
+         {"group_by": _str("Optional grouping", ["business_unit", "cost_type", "service"])}, [],
+         lambda ctx, group_by=None: forecast.cost_forecast(group_by, ctx.con), COSTS),
     Tool("get_anomalies", "Recent anomalies: 'operational' (Isolation Forest on daily incidents/alerts/outages per service) or "
          "'cost' (abnormal month-on-month cost moves).", {"kind": _str("Anomaly type", ["operational", "cost"])}, ["kind"],
          lambda ctx, kind: anomaly.operational_anomalies(con=ctx.con) if kind == "operational" else anomaly.cost_anomalies(con=ctx.con)),
