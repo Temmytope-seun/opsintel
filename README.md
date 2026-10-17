@@ -122,7 +122,7 @@ ServiceNow data goes to `data_servicenow/` and never mixes with the synthetic se
 
 ## Results (from the latest harness run, not hand-written)
 
-From [docs/evaluation_report.md](docs/evaluation_report.md): the 28-question benchmark under the three research conditions (Claude Opus 5.5 for the two LLM conditions; latest run 17 October 2026).
+The full write-up is the [technical report](docs/technical_report.md). From [docs/evaluation_report.md](docs/evaluation_report.md): the 28-question benchmark under the three research conditions (Claude Opus 5.5 for the two LLM conditions; latest run 17 October 2026).
 
 | Measure | Target (set before testing) | Analytics-only (rules) | **Hybrid (Claude + tools)** | LLM-only (no data) |
 |---|---|---|---|---|
@@ -161,7 +161,7 @@ Data integration: ETL reconciliation is 1.0 on all four sources. Risk model AUC 
 | `knowledge/` | Runbooks, policies, problem record, and a vendor bulletin containing a prompt-injection payload |
 | `eval/` | Independent ground truth, benchmark, harness |
 | `tests/` | Unit, security, workflow, API, LLM-loop and ServiceNow-connector tests |
-| `docs/` | Requirements, architecture, analytics methods, data dictionary, literature review, API reference, Unity proof-of-concept proposal, governance/DPIA, research proposal, evaluation report, SaaS roadmap, user guide, demo script |
+| `docs/` | Technical report (draft paper), requirements, architecture, analytics methods, data dictionary, literature review, API reference, Unity proof-of-concept proposal, governance/DPIA, research proposal, evaluation report, SaaS roadmap, user guide, demo script |
 
 ## How this maps to the KTP role
 
@@ -175,7 +175,7 @@ Data integration: ETL reconciliation is 1.0 on all four sources. Risk model AUC 
 | Pilot and governance | Docker/compose, RBAC, audit, [governance_risk_assessment.md](docs/governance_risk_assessment.md), security tests |
 | Integration and training | REST API ([api.md](docs/api.md), interactive at `/docs`), [user_guide.md](docs/user_guide.md) with training plan and feedback form |
 | SaaS commercialisation | [roadmap_saas.md](docs/roadmap_saas.md): multi-tenant design, cost model, pricing hypothesis |
-| Academic outputs | [research_proposal.md](docs/research_proposal.md), [evaluation_report.md](docs/evaluation_report.md) |
+| Academic outputs | [technical_report.md](docs/technical_report.md) (draft paper: design, method, results, discussion), [research_proposal.md](docs/research_proposal.md), [literature_review.md](docs/literature_review.md), [evaluation_report.md](docs/evaluation_report.md) |
 
 ## Known limitations
 
